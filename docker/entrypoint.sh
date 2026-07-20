@@ -1,8 +1,10 @@
 #!/bin/sh
 set -e
 
-# Générer APP_KEY si absente
-if ! grep -q "APP_KEY=base64" .env 2>/dev/null && [ -f artisan ]; then
+# Générer APP_KEY seulement si aucune n'est fournie par l'environnement (env_file)
+if [ -z "${APP_KEY:-}" ] && [ -f artisan ]; then
+    # Un fichier .env est requis par key:generate ; on en crée un minimal si absent.
+    [ -f .env ] || printf "APP_KEY=\n" > .env
     php artisan key:generate --force || true
 fi
 
