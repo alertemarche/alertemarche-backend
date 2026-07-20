@@ -35,11 +35,30 @@ class TenderController extends Controller
             $query->where(fn ($sub) => $sub->where('title', 'ilike', $q)->orWhere('institution', 'ilike', $q));
         }
 
-        return response()->json($query->paginate(min(50, (int) $request->integer('per_page', 15))));
+        $paginator = $query->paginate(min(50, (int) $request->integer('per_page', 15)));
+
+        // Affichage francisé : on expose le titre français quand il est disponible,
+        // tout en conservant le titre d'origine dans `title_original` (traçabilité).
+        $paginator->getCollection()->transform(function (Tender $tender) {
+            return $this->frenchify($tender);
+        });
+
+        return response()->json($paginator);
     }
 
     public function show(Tender $tender): JsonResponse
     {
-        return response()->json($tender);
+        return response()->json($this->frenchify($tender));
+    }
+
+    /** Remplace le titre affiché par sa traduction française si disponible. */
+    protected function frenchify(Tender $tender): Tender
+    {
+        if (! empty($tender->title_fr) && $tender->title_fr !== $tender->title) {
+            $tender->setAttribute('title_original', $tender->title);
+            $tender->setAttribute('title', $tender->title_fr);
+        }
+
+        return $tender;
     }
 }

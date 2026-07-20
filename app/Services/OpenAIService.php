@@ -32,17 +32,20 @@ class OpenAIService
 
         return Cache::remember($cacheKey, now()->addDays(30), function () use ($tender) {
             $prompt = "Tu es l'assistant IA d'AlerteMarché, plateforme de veille des appels d'offres en Afrique de l'Ouest.\n"
-                ."À partir des métadonnées suivantes, produis un résumé PROFESSIONNEL, clair et concis EN FRANÇAIS (4 à 6 phrases max), "
-                ."puis identifie les secteurs d'activité concernés parmi : BTP, Informatique, Santé, Agriculture, Énergie, Transport, Éducation, Environnement, Finance, Fournitures.\n\n"
+                ."À partir des métadonnées suivantes :\n"
+                ."1. Traduis le titre EN FRANÇAIS de façon fidèle et professionnelle (si le titre est déjà en français, recopie-le tel quel ; conserve les sigles d'organisations et les codes de référence).\n"
+                ."2. Produis un résumé PROFESSIONNEL, clair et concis EN FRANÇAIS (4 à 6 phrases max).\n"
+                ."3. Identifie les secteurs d'activité concernés parmi : BTP, Informatique, Santé, Agriculture, Énergie, Transport, Éducation, Environnement, Finance, Fournitures.\n\n"
                 ."Métadonnées :\n"
                 ."- Objet : {$tender['title']}\n"
                 ."- Institution : {$tender['institution']}\n"
                 ."- Montant estimé : ".($tender['estimated_amount'] ?? 'Non communiqué')."\n"
                 ."- Date limite : ".($tender['deadline'] ?? 'Non communiquée')."\n"
                 ."- Pays : {$tender['country']}\n\n"
-                ."Réponds STRICTEMENT en JSON : {\"summary\": \"...\", \"sectors\": [\"...\"]}";
+                ."Réponds STRICTEMENT en JSON : {\"title_fr\": \"...\", \"summary\": \"...\", \"sectors\": [\"...\"]}";
 
             return $this->askJson($prompt) ?? [
+                'title_fr' => $tender['title'],
                 'summary' => $tender['title'].' — '.$tender['institution'].'.',
                 'sectors' => [],
             ];
@@ -68,6 +71,33 @@ class OpenAIService
                 'summary' => $need['trade'].' à '.$need['locality'].'.',
                 'trade' => $need['trade'],
             ];
+        });
+    }
+
+    /**
+     * Traduit un titre en français (fidèle, professionnel).
+     * Utilisé pour le backfill des avis existants (ex. UNGM en anglais).
+     * Si le titre est déjà en français, il est renvoyé tel quel.
+     */
+    public function translateTitle(string $title): string
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return $title;
+        }
+
+        $cacheKey = 'ai_title_fr_'.md5($title);
+
+        return Cache::remember($cacheKey, now()->addDays(90), function () use ($title) {
+            $prompt = "Traduis ce titre d'appel d'offres EN FRANÇAIS de façon fidèle et professionnelle. "
+                ."Si le titre est déjà en français, recopie-le tel quel. "
+                ."Conserve les sigles d'organisations (UNICEF, PNUD, IOM, HCR, OMS...) et les codes de référence. "
+                ."Réponds STRICTEMENT en JSON : {\"title_fr\": \"...\"}\n\nTitre : {$title}";
+
+            $res = $this->askJson($prompt);
+            $out = trim((string) ($res['title_fr'] ?? ''));
+
+            return $out !== '' ? $out : $title;
         });
     }
 

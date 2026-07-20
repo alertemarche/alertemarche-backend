@@ -38,7 +38,10 @@ class ProcessTenderJob implements ShouldQueue
             'country' => $tender->country,
         ]);
 
+        $titleFr = trim((string) ($result['title_fr'] ?? ''));
+
         $tender->update([
+            'title_fr' => $titleFr !== '' ? $titleFr : $tender->title,
             'ai_summary' => $result['summary'] ?? null,
             'sectors' => $result['sectors'] ?? [],
             'ai_processed' => true,
