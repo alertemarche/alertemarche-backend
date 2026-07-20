@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class ProfileController extends Controller
+{
+    /** Mise à jour des préférences (secteurs, localités, notifications). */
+    public function update(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:255'],
+            'sectors' => ['nullable', 'array'],
+            'artisan_trade' => ['nullable', 'string', 'max:255'],
+            'artisan_locality' => ['nullable', 'string', 'max:255'],
+            'artisan_radius_km' => ['nullable', 'integer', 'min:1', 'max:500'],
+            'primary_country' => ['nullable', 'string', 'size:2'],
+            'notify_email' => ['nullable', 'boolean'],
+            'notify_whatsapp' => ['nullable', 'boolean'],
+        ]);
+
+        $user = $request->user();
+
+        // WhatsApp uniquement si abonnement payant actif
+        if (array_key_exists('notify_whatsapp', $data) && $data['notify_whatsapp'] && ! $user->hasActiveSubscription()) {
+            $data['notify_whatsapp'] = false;
+        }
+
+        $user->update($data);
+
+        return response()->json(['message' => 'Profil mis à jour.', 'user' => $user->fresh()]);
+    }
+}

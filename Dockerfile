@@ -1,4 +1,4 @@
-# AlerteMarché Backend — PHP 8.2 FPM + extensions Laravel
+# AlerteMarché Backend — PHP 8.2 FPM + extensions Laravel 11
 FROM php:8.2-fpm
 
 # Dépendances système
@@ -17,10 +17,23 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
+# Installer d'abord les dépendances (cache Docker) ...
+COPY composer.json composer.lock* ./
+RUN composer install --no-interaction --no-scripts --no-autoloader --prefer-dist --no-dev || \
+    composer install --no-interaction --no-scripts --no-autoloader --prefer-dist
+
+# ... puis le code applicatif
 COPY . .
 
-RUN composer install --no-interaction --optimize-autoloader --no-dev || true \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache 2>/dev/null || true
+RUN composer dump-autoload --optimize --no-dev \
+    && mkdir -p storage/framework/{cache/data,sessions,views} storage/logs bootstrap/cache \
+    && chown -R www-data:www-data storage bootstrap/cache \
+    && chmod -R 775 storage bootstrap/cache
 
 EXPOSE 9000
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["entrypoint.sh"]
 CMD ["php-fpm"]
