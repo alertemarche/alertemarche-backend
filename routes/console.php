@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\ProcessTenderJob;
+use App\Jobs\PurgeExpiredTenders;
 use App\Models\Tender;
 use Illuminate\Support\Facades\Schedule;
 
@@ -9,3 +10,9 @@ Schedule::call(function () {
     Tender::where('ai_processed', false)->limit(50)->get()
         ->each(fn ($t) => ProcessTenderJob::dispatch($t->id)->onQueue('ai'));
 })->everyThirtyMinutes()->name('reprocess-tenders')->withoutOverlapping();
+
+// Purge quotidienne des appels d'offres expirés (deadline dépassée depuis +24h).
+Schedule::job(new PurgeExpiredTenders())
+    ->daily()
+    ->name('purge-expired-tenders')
+    ->withoutOverlapping();

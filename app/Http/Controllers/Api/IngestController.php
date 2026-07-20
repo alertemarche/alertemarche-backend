@@ -29,7 +29,7 @@ class IngestController extends Controller
             'items.*.publication_date' => ['nullable', 'date'],
             'items.*.nb_lots' => ['nullable', 'integer'],
             'items.*.country' => ['required', Rule::in(['BJ', 'TG', 'CI'])],
-            'items.*.type' => ['nullable', Rule::in(['public', 'prive'])],
+            'items.*.type' => ['nullable', Rule::in(['public', 'prive', 'aac', 'avis_general', 'plan_passation'])],
             'items.*.market_type' => ['nullable', 'string'],
             'items.*.source_name' => ['nullable', 'string'],
             'items.*.source_url' => ['required', 'string'],

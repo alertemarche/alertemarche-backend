@@ -18,7 +18,14 @@ class TenderController extends Controller
             $query->where('country', $request->string('country'));
         }
         if ($request->filled('type')) {
+            // Filtre explicite : le frontend peut cibler n'importe quel type
+            // (public, prive, aac, avis_general, plan_passation).
             $query->where('type', $request->string('type'));
+        } else {
+            // Sans filtre : on ne renvoie que les opportunités actives dans la liste
+            // principale (public, prive, aac). Les documents de planification
+            // (avis_general, plan_passation) sont exclus par défaut.
+            $query->whereIn('type', ['public', 'prive', 'aac']);
         }
         if ($request->filled('sector')) {
             $query->whereJsonContains('sectors', (string) $request->string('sector'));
