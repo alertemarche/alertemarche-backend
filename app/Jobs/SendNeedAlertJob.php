@@ -15,9 +15,10 @@ class SendNeedAlertJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $queue = 'notifications';
-
-    public function __construct(public int $userId, public int $needId) {}
+    public function __construct(public int $userId, public int $needId)
+    {
+        $this->onQueue('notifications');
+    }
 
     public function handle(AlertDispatcher $dispatcher): void
     {

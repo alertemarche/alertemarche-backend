@@ -18,9 +18,10 @@ class ProcessTenderJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $queue = 'ai';
-
-    public function __construct(public int $tenderId) {}
+    public function __construct(public int $tenderId)
+    {
+        $this->onQueue('ai');
+    }
 
     public function handle(OpenAIService $ai): void
     {

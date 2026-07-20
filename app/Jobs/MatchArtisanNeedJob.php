@@ -14,9 +14,10 @@ class MatchArtisanNeedJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $queue = 'matching';
-
-    public function __construct(public int $needId) {}
+    public function __construct(public int $needId)
+    {
+        $this->onQueue('matching');
+    }
 
     public function handle(MatchingService $matcher): void
     {

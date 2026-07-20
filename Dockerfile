@@ -12,8 +12,9 @@ RUN docker-php-ext-install pdo pdo_pgsql pgsql mbstring zip exif pcntl bcmath gd
     && pecl install redis \
     && docker-php-ext-enable redis
 
-# Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Composer (version épinglée : composer:latest bloque Laravel 11 via sa
+# nouvelle politique d'advisories ; 2.7 installe sans souci)
+COPY --from=composer:2.7 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
