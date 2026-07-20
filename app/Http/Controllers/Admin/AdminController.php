@@ -41,14 +41,55 @@ class AdminController extends Controller
         ]);
     }
 
-    /** Monitoring des robots de collecte. */
+    /** Monitoring des robots de collecte (santé par robot). */
     public function scrapers(): JsonResponse
     {
-        $latest = ScraperLog::selectRaw('country, source_name, max(ran_at) as last_run')
+        // Dernière exécution par (pays, source).
+        $sources = ScraperLog::selectRaw('country, source_name')
             ->groupBy('country', 'source_name')->get();
 
+        $robots = $sources->map(function ($s) {
+            $last = ScraperLog::where('country', $s->country)
+                ->where('source_name', $s->source_name)
+                ->latest('ran_at')->first();
+
+            $failures24h = ScraperLog::where('country', $s->country)
+                ->where('source_name', $s->source_name)
+                ->where('status', 'failure')
+                ->where('ran_at', '>=', now()->subDay())->count();
+
+            // Santé : ok (succès récent < 6h), stale (aucune exécution récente),
+            // ou down (dernier statut = échec).
+            $ranAt = $last?->ran_at;
+            $stale = !$ranAt || $ranAt->lt(now()->subHours(6));
+            $health = 'ok';
+            if ($last?->status === 'failure') {
+                $health = 'down';
+            } elseif ($stale) {
+                $health = 'stale';
+            }
+
+            return [
+                'country' => $s->country,
+                'source_name' => $s->source_name,
+                'last_run' => $ranAt,
+                'last_status' => $last?->status,
+                'last_items_collected' => $last?->items_collected,
+                'last_items_new' => $last?->items_new,
+                'last_message' => $last?->message,
+                'failures_24h' => $failures24h,
+                'health' => $health,
+            ];
+        })->values();
+
         return response()->json([
-            'latest' => $latest,
+            'robots' => $robots,
+            'summary' => [
+                'total' => $robots->count(),
+                'ok' => $robots->where('health', 'ok')->count(),
+                'stale' => $robots->where('health', 'stale')->count(),
+                'down' => $robots->where('health', 'down')->count(),
+            ],
             'recent_logs' => ScraperLog::latest('ran_at')->limit(50)->get(),
         ]);
     }
