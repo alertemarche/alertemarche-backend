@@ -33,12 +33,21 @@ Route::get('/geo/detect', [GeoController::class, 'detect']);
 Route::get('/pricing/grid', [PricingController::class, 'grid']);
 Route::post('/pricing/quote', [PricingController::class, 'quote']);
 
+// Secteurs & pays de référence (public)
+Route::get('/sectors', fn () => response()->json(
+    \App\Models\Sector::query()->orderBy('name')->get(['id', 'code', 'name'])
+));
+Route::get('/countries', fn () => response()->json(
+    \App\Models\Country::query()->where('active', true)->get(['code', 'name', 'flag_emoji', 'currency'])
+));
+
 // Appels d'offres (public)
 Route::get('/tenders', [TenderController::class, 'index']);
 Route::get('/tenders/{tender}', [TenderController::class, 'show']);
 
-// Besoins artisans (public : lecture)
+// Besoins artisans (public : lecture + expression d'un besoin par un visiteur)
 Route::get('/needs', [ArtisanNeedController::class, 'index']);
+Route::post('/needs/express', [ArtisanNeedController::class, 'store']);
 
 // Authentification
 Route::prefix('auth')->group(function () {
