@@ -38,6 +38,13 @@ class AuthController extends Controller
             'artisan_trade' => ['nullable', 'string', 'max:255'],
             'artisan_locality' => ['nullable', 'string', 'max:255'],
             'artisan_radius_km' => ['nullable', 'integer', 'min:1', 'max:500'],
+            // Champs additionnels frontend (non stockés mais validés pour éviter rejets)
+            'organization' => ['nullable', 'string', 'max:255'],
+            'region' => ['nullable', 'string', 'max:100'],
+            'city' => ['nullable', 'string', 'max:100'],
+            'password_confirmation' => ['nullable', 'string'],
+            'notify_email' => ['nullable', 'boolean'],
+            'notify_whatsapp' => ['nullable', 'boolean'],
         ]);
 
         $country = $data['primary_country'] ?? $this->geo->countryFromIp($request->ip());
@@ -54,8 +61,8 @@ class AuthController extends Controller
             'artisan_trade' => $data['artisan_trade'] ?? null,
             'artisan_locality' => $data['artisan_locality'] ?? null,
             'artisan_radius_km' => $data['artisan_radius_km'] ?? null,
-            'notify_email' => true,
-            'notify_whatsapp' => false, // activé avec abonnement payant
+            'notify_email' => $data['notify_email'] ?? true,
+            'notify_whatsapp' => $data['notify_whatsapp'] ?? false,
         ]);
 
         // OTP de vérification
