@@ -32,12 +32,35 @@ class MatchingService
                     });
             })
             ->get()
-            ->filter(function (User $user) use ($sectors) {
-                if (empty($sectors) || empty($user->sectors)) {
-                    return true; // pas de filtre sectoriel → on notifie
+            ->filter(function (User $user) use ($tender, $sectors) {
+                $userSectors = (array) $user->sectors;
+                $userKeywords = (array) $user->keywords;
+
+                // Aucun critère défini par l'utilisateur → on notifie (fallback).
+                if (empty($userSectors) && empty($userKeywords)) {
+                    return true;
                 }
 
-                return count(array_intersect($sectors, (array) $user->sectors)) > 0;
+                // 1) Correspondance sectorielle (intersection des noms canoniques).
+                if (! empty($userSectors) && ! empty($sectors)
+                    && count(array_intersect($sectors, $userSectors)) > 0) {
+                    return true;
+                }
+
+                // 2) Correspondance par mot-clé personnalisé dans l'intitulé.
+                if (! empty($userKeywords)) {
+                    $haystack = \App\Support\SectorClassifier::normalize(
+                        ($tender->title_fr ?: $tender->title).' '.$tender->institution
+                    );
+                    foreach ($userKeywords as $kw) {
+                        $kw = \App\Support\SectorClassifier::normalize($kw);
+                        if ($kw !== '' && str_contains($haystack, $kw)) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
             })
             ->values();
     }

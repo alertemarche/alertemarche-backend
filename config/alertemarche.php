@@ -15,6 +15,7 @@ return [
     // Remise de lancement (%)
     'launch_discount_percent' => (int) env('LAUNCH_DISCOUNT_PERCENT', 50),
 
-    // Freemium : nombre d'alertes gratuites
-    'freemium_alerts' => (int) env('FREEMIUM_ALERTS', 5),
+    // Freemium désactivé : aucune alerte gratuite. L'abonnement est obligatoire
+    // pour recevoir des alertes. La consultation du site reste libre.
+    'freemium_alerts' => (int) env('FREEMIUM_ALERTS', 0),
 ];

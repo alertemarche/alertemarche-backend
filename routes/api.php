@@ -33,9 +33,16 @@ Route::get('/geo/detect', [GeoController::class, 'detect']);
 Route::get('/pricing/grid', [PricingController::class, 'grid']);
 Route::post('/pricing/quote', [PricingController::class, 'quote']);
 
+// Formules d'abonnement par durée (public) — source de vérité = config/plans.php
+Route::get('/plans', fn () => response()->json([
+    'currency' => config('plans.currency', 'XOF'),
+    'plans' => config('plans.plans', []),
+]));
+
 // Secteurs & pays de référence (public)
+// Source de vérité unique = config/sectors.php (21 secteurs data-réels du Bénin).
 Route::get('/sectors', fn () => response()->json(
-    \App\Models\Sector::query()->orderBy('name')->get(['id', 'code', 'name'])
+    \App\Support\SectorClassifier::options()
 ));
 Route::get('/countries', fn () => response()->json(
     \App\Models\Country::query()->where('active', true)->get(['code', 'name', 'flag_emoji', 'currency'])
@@ -57,8 +64,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/otp/resend', [AuthController::class, 'resendOtp']);
 });
 
-// Paiement — webhook KKPays (public, signé côté KKPays)
-Route::post('/payments/kkpays/webhook', [PaymentController::class, 'webhook']);
+// Paiement — KKiaPay
+Route::get('/payments/kkiapay/config', [PaymentController::class, 'config']);   // clé publique widget
+Route::post('/payments/kkiapay/webhook', [PaymentController::class, 'webhook']); // serveur-à-serveur (public)
 
 // Ingestion scrapers (jeton dédié)
 Route::middleware('scraper')->prefix('ingest')->group(function () {
@@ -78,6 +86,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/subscriptions', [SubscriptionController::class, 'index']);
     Route::post('/subscriptions', [SubscriptionController::class, 'store']);
     Route::post('/subscriptions/{subscription}/activate', [SubscriptionController::class, 'activate']);
+
+    // Vérification serveur du paiement KKiaPay (après succès du widget)
+    Route::post('/payments/kkiapay/verify', [PaymentController::class, 'verify']);
 
     // Publication de besoins (entreprises, admin, ONG)
     Route::post('/needs', [ArtisanNeedController::class, 'store']);

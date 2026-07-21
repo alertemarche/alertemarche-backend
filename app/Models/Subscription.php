@@ -8,9 +8,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Subscription extends Model
 {
     protected $fillable = [
-        'user_id', 'profile_type', 'countries', 'country_count', 'base_price',
-        'amount', 'promo_applied', 'status', 'started_at', 'expires_at',
-        'auto_renew', 'payment_reference',
+        'user_id', 'plan', 'duration_months', 'profile_type', 'countries',
+        'country_count', 'base_price', 'amount', 'promo_applied', 'status',
+        'started_at', 'expires_at', 'auto_renew', 'payment_reference',
     ];
 
     protected $casts = [

@@ -32,6 +32,9 @@ class AuthController extends Controller
             'profile_type' => ['required', Rule::in(User::PROFILES)],
             'primary_country' => ['nullable', 'string', 'size:2'],
             'sectors' => ['nullable', 'array'],
+            'sectors.*' => ['string', 'max:80'],
+            'keywords' => ['nullable', 'array'],
+            'keywords.*' => ['string', 'max:60'],
             'artisan_trade' => ['nullable', 'string', 'max:255'],
             'artisan_locality' => ['nullable', 'string', 'max:255'],
             'artisan_radius_km' => ['nullable', 'integer', 'min:1', 'max:500'],
@@ -47,6 +50,7 @@ class AuthController extends Controller
             'profile_type' => $data['profile_type'],
             'primary_country' => $country,
             'sectors' => $data['sectors'] ?? null,
+            'keywords' => $data['keywords'] ?? null,
             'artisan_trade' => $data['artisan_trade'] ?? null,
             'artisan_locality' => $data['artisan_locality'] ?? null,
             'artisan_radius_km' => $data['artisan_radius_km'] ?? null,
@@ -65,18 +69,19 @@ class AuthController extends Controller
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
-            'message' => 'Inscription réussie. 5 alertes gratuites activées.',
+            'message' => 'Inscription réussie. Activez un abonnement pour recevoir vos alertes.',
             'user' => $user,
             'token' => $token,
             'otp_required' => true,
         ], 201);
     }
 
-    /** Génère et envoie un code OTP (WhatsApp prioritaire, sinon email). */
+    /** Génère et envoie un code OTP (e-mail prioritaire, sinon WhatsApp). */
     protected function issueOtp(User $user): void
     {
-        $identifier = $user->phone ?: $user->email;
-        $channel = $user->phone ? 'whatsapp' : 'email';
+        // E-mail prioritaire (gratuit et fiable via Brevo) ; WhatsApp réservé au premium.
+        $identifier = $user->email ?: $user->phone;
+        $channel = $user->email ? 'email' : 'whatsapp';
         $code = (string) random_int(100000, 999999);
 
         OtpCode::create([

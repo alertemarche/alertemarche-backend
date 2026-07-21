@@ -9,7 +9,7 @@ use App\Models\User;
 
 /**
  * Diffusion d'une alerte à un abonné en respectant :
- *  - le quota freemium (5 alertes, email uniquement) ;
+ *  - l'obligation d'un abonnement actif (plus d'alertes gratuites) ;
  *  - la règle « 1 opportunité matchée = 1 alerte consommée » (WA + Email = 1) ;
  *  - WhatsApp réservé aux abonnés payants actifs.
  */

@@ -14,6 +14,9 @@ class ProfileController extends Controller
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
             'sectors' => ['nullable', 'array'],
+            'sectors.*' => ['string', 'max:80'],
+            'keywords' => ['nullable', 'array'],
+            'keywords.*' => ['string', 'max:60'],
             'artisan_trade' => ['nullable', 'string', 'max:255'],
             'artisan_locality' => ['nullable', 'string', 'max:255'],
             'artisan_radius_km' => ['nullable', 'integer', 'min:1', 'max:500'],

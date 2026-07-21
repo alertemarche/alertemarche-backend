@@ -98,40 +98,13 @@ class ProcessTenderJob implements ShouldQueue
     }
 
     /**
-     * Classification sectorielle locale par mots-clés, alignée sur le
-     * vocabulaire IA : BTP, Informatique, Santé, Agriculture, Énergie,
-     * Transport, Éducation, Environnement, Finance, Fournitures.
+     * Classification sectorielle locale par mots-clés.
+     * S'appuie sur le référentiel canonique unique (config/sectors.php)
+     * via App\Support\SectorClassifier — 21 secteurs dérivés des intitulés
+     * réels de marchés béninois.
      */
     protected function guessSectors(?string $title, ?string $marketType): array
     {
-        $t = mb_strtolower(trim(($title ?? '').' '.($marketType ?? '')));
-        if ($t === '') {
-            return [];
-        }
-
-        $map = [
-            'BTP' => ['travaux', 'construction', 'bâtiment', 'batiment', 'route', 'réhabilit', 'rehabilit', 'forage', 'génie civil', 'genie civil', 'voirie', 'pavage', 'ouvrage', 'aménagement', 'amenagement'],
-            'Informatique' => ['informatique', 'logiciel', 'numérique', 'numerique', 'digital', 'réseau', 'reseau', 'ordinateur', 'application', 'système d\'information', 'systeme d\'information'],
-            'Santé' => ['santé', 'sante', 'médic', 'medic', 'hôpital', 'hopital', 'sanitaire', 'pharmac', 'clinique', 'soins'],
-            'Agriculture' => ['agric', 'semence', 'engrais', 'élevage', 'elevage', 'pêche', 'peche', 'intrant', 'plant'],
-            'Énergie' => ['énergie', 'energie', 'électr', 'electr', 'solaire', 'photovolt', 'groupe électrogène', 'groupe electrogene'],
-            'Transport' => ['transport', 'véhicule', 'vehicule', 'roulant', 'logistique', 'automobile', 'moto'],
-            'Éducation' => ['écol', 'ecol', 'éducation', 'education', 'enseign', 'scolaire', 'formation', 'université', 'universite', 'pédagog', 'pedagog'],
-            'Environnement' => ['environnement', 'déchet', 'dechet', 'assainissement', 'eau', 'hygiène', 'hygiene', 'reboisement', 'climat'],
-            'Finance' => ['financ', 'assurance', 'comptab', 'audit', 'banque', 'fiscal', 'budgét', 'budget'],
-            'Fournitures' => ['fourniture', 'acquisition', 'équipement', 'equipement', 'mobilier', 'matériel', 'materiel', 'consommable'],
-        ];
-
-        $found = [];
-        foreach ($map as $sector => $needles) {
-            foreach ($needles as $n) {
-                if (str_contains($t, $n)) {
-                    $found[] = $sector;
-                    break;
-                }
-            }
-        }
-
-        return array_values(array_unique($found));
+        return \App\Support\SectorClassifier::classify($title, $marketType);
     }
 }

@@ -31,11 +31,12 @@ class OpenAIService
         $cacheKey = 'ai_tender_'.md5(json_encode($tender));
 
         return Cache::remember($cacheKey, now()->addDays(30), function () use ($tender) {
+            $sectorNames = implode(', ', \App\Support\SectorClassifier::names());
             $prompt = "Tu es l'assistant IA d'AlerteMarché, plateforme de veille des appels d'offres en Afrique de l'Ouest.\n"
                 ."À partir des métadonnées suivantes :\n"
                 ."1. Traduis le titre EN FRANÇAIS de façon fidèle et professionnelle (si le titre est déjà en français, recopie-le tel quel ; conserve les sigles d'organisations et les codes de référence).\n"
                 ."2. Produis un résumé PROFESSIONNEL, clair et concis EN FRANÇAIS (4 à 6 phrases max).\n"
-                ."3. Identifie les secteurs d'activité concernés parmi : BTP, Informatique, Santé, Agriculture, Énergie, Transport, Éducation, Environnement, Finance, Fournitures.\n\n"
+                ."3. Identifie le ou les secteurs d'activité concernés STRICTEMENT parmi cette liste (recopie le libellé exact, n'invente aucun autre secteur) : {$sectorNames}.\n\n"
                 ."Métadonnées :\n"
                 ."- Objet : {$tender['title']}\n"
                 ."- Institution : {$tender['institution']}\n"
@@ -44,11 +45,20 @@ class OpenAIService
                 ."- Pays : {$tender['country']}\n\n"
                 ."Réponds STRICTEMENT en JSON : {\"title_fr\": \"...\", \"summary\": \"...\", \"sectors\": [\"...\"]}";
 
-            return $this->askJson($prompt) ?? [
+            $res = $this->askJson($prompt) ?? [
                 'title_fr' => $tender['title'],
                 'summary' => $tender['title'].' — '.$tender['institution'].'.',
                 'sectors' => [],
             ];
+
+            // Ne conserver que les secteurs présents dans le référentiel canonique.
+            $res['sectors'] = \App\Support\SectorClassifier::keepValid((array) ($res['sectors'] ?? []));
+            // Filet de sécurité : si l'IA n'a rien renvoyé de valide, tag local.
+            if (empty($res['sectors'])) {
+                $res['sectors'] = \App\Support\SectorClassifier::classify($tender['title'] ?? null);
+            }
+
+            return $res;
         });
     }
 

@@ -18,28 +18,33 @@ class SubscriptionController extends Controller
         return response()->json($request->user()->subscriptions()->latest()->get());
     }
 
-    /** Souscription — crée un abonnement en attente de paiement. */
+    /**
+     * Souscription — crée un abonnement en attente de paiement.
+     *
+     * Modèle par durée : une seule offre donnant accès à l'intégralité du
+     * service. Le client choisit une formule (mensuel / trimestriel /
+     * semestriel / annuel). Le montant et la durée sont déterminés côté
+     * serveur (source de vérité) à partir de config/plans.php.
+     */
     public function store(Request $request): JsonResponse
     {
+        $planKeys = array_keys(config('plans.plans', []));
+
         $data = $request->validate([
-            'profile_type' => ['required', Rule::in(['prestataire', 'artisan', 'admin_public', 'ong'])],
-            'countries' => ['required', 'array', 'min:1', 'max:3'],
-            'countries.*' => [Rule::in(['BJ', 'TG', 'CI'])],
+            'plan' => ['required', Rule::in($planKeys)],
             'auto_renew' => ['nullable', 'boolean'],
         ]);
 
-        $countries = array_values(array_unique($data['countries']));
-        $count = count($countries);
-        $quote = $this->pricing->quote($data['profile_type'], $count, true);
+        $plan = config('plans.plans.' . $data['plan']);
 
         $subscription = Subscription::create([
             'user_id' => $request->user()->id,
-            'profile_type' => $data['profile_type'],
-            'countries' => $countries,
-            'country_count' => $count,
-            'base_price' => $quote['base_price'],
-            'amount' => $quote['promo_total'],
-            'promo_applied' => true,
+            'plan' => $data['plan'],
+            'duration_months' => $plan['duration_months'],
+            'amount' => $plan['amount'],
+            'base_price' => $plan['amount'],
+            'country_count' => 1,
+            'promo_applied' => $plan['discount'] > 0,
             'status' => 'pending',
             'auto_renew' => $request->boolean('auto_renew', false),
         ]);
@@ -47,7 +52,7 @@ class SubscriptionController extends Controller
         return response()->json([
             'message' => 'Abonnement créé. Procédez au paiement pour l\'activer.',
             'subscription' => $subscription,
-            'quote' => $quote,
+            'plan' => array_merge(['key' => $data['plan']], $plan),
         ], 201);
     }
 
@@ -59,7 +64,7 @@ class SubscriptionController extends Controller
         $subscription->update([
             'status' => 'active',
             'started_at' => now(),
-            'expires_at' => now()->addMonth(),
+            'expires_at' => now()->addMonths(max(1, (int) $subscription->duration_months)),
         ]);
 
         // WhatsApp devient disponible pour un abonné payant

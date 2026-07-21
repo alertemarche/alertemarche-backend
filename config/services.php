@@ -19,14 +19,18 @@ return [
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
         'business_account_id' => env('WHATSAPP_BUSINESS_ACCOUNT_ID'),
         'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
+        // Numéro expéditeur officiel AlerteMarché (affichage / templates).
+        'sender_number' => env('WHATSAPP_SENDER_NUMBER', '+2290198524949'),
         'base_url' => 'https://graph.facebook.com/v20.0',
     ],
 
-    'kkpays' => [
-        'key' => env('KKPAYS_API_KEY'),
-        'secret' => env('KKPAYS_SECRET'),
-        'merchant_id' => env('KKPAYS_MERCHANT_ID'),
-        'base_url' => env('KKPAYS_BASE_URL', 'https://api.kkpays.com'),
+    // Passerelle de paiement KKiaPay (Mobile Money + carte — Bénin).
+    'kkiapay' => [
+        'public_key' => env('KKIAPAY_PUBLIC_KEY'),
+        'private_key' => env('KKIAPAY_PRIVATE_KEY'),
+        'secret' => env('KKIAPAY_SECRET'),
+        'sandbox' => (bool) env('KKIAPAY_SANDBOX', true),
+        'api_url' => env('KKIAPAY_API_URL', 'https://api.kkiapay.me'),
     ],
 
     'scrapers' => [

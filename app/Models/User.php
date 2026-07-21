@@ -16,7 +16,7 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name', 'email', 'phone', 'password', 'profile_type', 'is_admin',
-        'primary_country', 'sectors', 'artisan_trade', 'artisan_locality',
+        'primary_country', 'sectors', 'keywords', 'artisan_trade', 'artisan_locality',
         'artisan_radius_km', 'notify_whatsapp', 'notify_email',
         'email_verified_at', 'phone_verified_at',
     ];
@@ -30,6 +30,7 @@ class User extends Authenticatable
             'phone_verified_at' => 'datetime',
             'password' => 'hashed',
             'sectors' => 'array',
+            'keywords' => 'array',
             'is_admin' => 'boolean',
             'is_suspended' => 'boolean',
             'notify_whatsapp' => 'boolean',
