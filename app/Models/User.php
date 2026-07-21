@@ -15,7 +15,7 @@ class User extends Authenticatable
     public const PROFILES = ['prestataire', 'artisan', 'admin_public', 'ong'];
 
     protected $fillable = [
-        'name', 'email', 'phone', 'password', 'profile_type', 'is_admin',
+        'name', 'organization', 'email', 'phone', 'password', 'profile_type', 'is_admin',
         'primary_country', 'sectors', 'keywords', 'artisan_trade', 'artisan_locality',
         'artisan_radius_km', 'notify_whatsapp', 'notify_email',
         'email_verified_at', 'phone_verified_at',

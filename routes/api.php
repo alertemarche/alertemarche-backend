@@ -99,6 +99,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);
         Route::get('/scrapers', [AdminController::class, 'scrapers']);
         Route::get('/users', [AdminController::class, 'users']);
+        Route::get('/subscriptions', [AdminController::class, 'subscriptions']);
         Route::get('/needs/pending', [AdminController::class, 'pendingNeeds']);
         Route::post('/needs/{need}/validate', [AdminController::class, 'validateNeed']);
     });

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
@@ -13,6 +14,8 @@ class ProfileController extends Controller
     {
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
+            'organization' => ['nullable', 'string', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($request->user()->id)],
             'sectors' => ['nullable', 'array'],
             'sectors.*' => ['string', 'max:80'],
             'keywords' => ['nullable', 'array'],

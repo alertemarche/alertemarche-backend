@@ -94,18 +94,137 @@ class AdminController extends Controller
         ]);
     }
 
-    /** Liste paginée des utilisateurs. */
+    /**
+     * Liste des utilisateurs enrichie (entreprise, contact, abonnement).
+     * Paramètres : profile_type, country, q (recherche), all=1 (liste
+     * complète pour export CSV), sinon pagination 25.
+     */
     public function users(Request $request): JsonResponse
     {
-        $query = User::query()->latest();
+        $query = User::query()
+            ->with(['subscriptions' => fn ($q) => $q->latest()])
+            ->withCount('alerts')
+            ->latest();
+
         if ($request->filled('profile_type')) {
             $query->where('profile_type', $request->string('profile_type'));
         }
         if ($request->filled('country')) {
             $query->where('primary_country', $request->string('country'));
         }
+        if ($request->filled('q')) {
+            $term = '%'.$request->string('q').'%';
+            $query->where(function ($w) use ($term) {
+                $w->where('name', 'ilike', $term)
+                    ->orWhere('organization', 'ilike', $term)
+                    ->orWhere('email', 'ilike', $term)
+                    ->orWhere('phone', 'ilike', $term);
+            });
+        }
 
-        return response()->json($query->paginate(25));
+        $map = function (User $u) {
+            $active = $u->activeSubscription();
+
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'organization' => $u->organization,
+                'email' => $u->email,
+                'phone' => $u->phone,
+                'profile_type' => $u->profile_type,
+                'primary_country' => $u->primary_country,
+                'sectors' => $u->sectors,
+                'keywords' => $u->keywords,
+                'is_admin' => (bool) $u->is_admin,
+                'is_suspended' => (bool) $u->is_suspended,
+                'email_verified' => $u->email_verified_at !== null,
+                'alerts_count' => $u->alerts_count,
+                'subscription_status' => $active ? 'active' : ($u->subscriptions->isNotEmpty() ? $u->subscriptions->first()->status : 'aucun'),
+                'subscription_plan' => $active?->plan,
+                'subscription_amount' => $active ? (int) $active->amount : 0,
+                'subscription_expires_at' => $active?->expires_at,
+                'created_at' => $u->created_at,
+            ];
+        };
+
+        if ($request->boolean('all')) {
+            return response()->json(['data' => $query->get()->map($map)->values()]);
+        }
+
+        $page = $query->paginate(25);
+
+        return response()->json([
+            'data' => collect($page->items())->map($map)->values(),
+            'current_page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+            'total' => $page->total(),
+        ]);
+    }
+
+    /**
+     * Liste des abonnements avec entreprise/contact du souscripteur,
+     * formule, montant, statut et échéances. Synthèse du chiffre
+     * d'affaires. Paramètres : status, plan, all=1 (export CSV).
+     */
+    public function subscriptions(Request $request): JsonResponse
+    {
+        $query = Subscription::query()->with('user')->latest();
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->string('status'));
+        }
+        if ($request->filled('plan')) {
+            $query->where('plan', $request->string('plan'));
+        }
+
+        $map = function (Subscription $s) {
+            return [
+                'id' => $s->id,
+                'user_id' => $s->user_id,
+                'name' => $s->user?->name,
+                'organization' => $s->user?->organization,
+                'email' => $s->user?->email,
+                'phone' => $s->user?->phone,
+                'profile_type' => $s->profile_type ?? $s->user?->profile_type,
+                'plan' => $s->plan,
+                'duration_months' => $s->duration_months,
+                'amount' => (int) $s->amount,
+                'status' => $s->status,
+                'started_at' => $s->started_at,
+                'expires_at' => $s->expires_at,
+                'payment_reference' => $s->payment_reference,
+                'created_at' => $s->created_at,
+            ];
+        };
+
+        // Synthèse (indépendante des filtres de liste).
+        $revenueByPlan = Subscription::where('status', 'active')
+            ->selectRaw('plan, count(*) as total, sum(amount) as revenue')
+            ->groupBy('plan')->get();
+
+        $summary = [
+            'total_subscriptions' => Subscription::count(),
+            'active' => Subscription::where('status', 'active')->count(),
+            'pending' => Subscription::where('status', 'pending')->count(),
+            'expired' => Subscription::whereIn('status', ['expired', 'cancelled'])->count(),
+            'revenue_active' => (int) Subscription::where('status', 'active')->sum('amount'),
+            'revenue_total' => (int) Subscription::sum('amount'),
+            'by_plan' => $revenueByPlan,
+        ];
+
+        if ($request->boolean('all')) {
+            return response()->json(['data' => $query->get()->map($map)->values(), 'summary' => $summary]);
+        }
+
+        $page = $query->paginate(25);
+
+        return response()->json([
+            'data' => collect($page->items())->map($map)->values(),
+            'current_page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+            'total' => $page->total(),
+            'summary' => $summary,
+        ]);
     }
 
     /** Besoins en attente de validation éditoriale. */
