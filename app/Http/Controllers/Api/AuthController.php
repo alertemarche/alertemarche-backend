@@ -45,6 +45,16 @@ class AuthController extends Controller
             'password_confirmation' => ['nullable', 'string'],
             'notify_email' => ['nullable', 'boolean'],
             'notify_whatsapp' => ['nullable', 'boolean'],
+        ], [
+            // Messages en français (évite l'affichage des clés brutes type « validation.unique »)
+            'email.unique' => 'Cette adresse e-mail est déjà associée à un compte. Connectez-vous ou utilisez une autre adresse.',
+            'email.email' => 'Veuillez saisir une adresse e-mail valide.',
+            'email.required_without' => 'Veuillez renseigner une adresse e-mail ou un numéro de téléphone.',
+            'phone.unique' => 'Ce numéro de téléphone est déjà associé à un compte. Connectez-vous ou utilisez un autre numéro.',
+            'phone.required_without' => 'Veuillez renseigner un numéro de téléphone ou une adresse e-mail.',
+            'password.min' => 'Le mot de passe doit contenir au moins 8 caractères.',
+            'profile_type.required' => 'Le profil est obligatoire.',
+            'profile_type.in' => 'Profil invalide.',
         ]);
 
         $country = $data['primary_country'] ?? $this->geo->countryFromIp($request->ip());
