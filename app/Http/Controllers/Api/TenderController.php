@@ -35,7 +35,7 @@ class TenderController extends Controller
             $query->where(fn ($sub) => $sub->where('title', 'ilike', $q)->orWhere('institution', 'ilike', $q));
         }
 
-        $paginator = $query->paginate(min(50, (int) $request->integer('per_page', 15)));
+        $paginator = $query->paginate(min(500, (int) $request->integer('per_page', 15)));
 
         // Affichage francisé : on expose le titre français quand il est disponible,
         // tout en conservant le titre d'origine dans `title_original` (traçabilité).
