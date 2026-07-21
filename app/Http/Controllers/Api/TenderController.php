@@ -17,6 +17,18 @@ class TenderController extends Controller
         if ($request->filled('country')) {
             $query->where('country', $request->string('country'));
         }
+
+        // Filtre « actifs et à venir » : on exclut les avis expirés (date
+        // limite dépassée). Les avis sans date limite (plans de passation,
+        // avis généraux, marchés dont l'échéance n'est pas encore publiée)
+        // sont conservés car ils correspondent à des opportunités actives
+        // ou planifiées pour le futur.
+        if ($request->boolean('active')) {
+            $query->where(function ($q) {
+                $q->whereNull('deadline')->orWhere('deadline', '>=', now()->startOfDay());
+            });
+        }
+
         // Filtre par type de procédure de passation (sous-catégories « Appels
         // d'offres publics » : cotation, drp, aaon, aaoi, ami, autre).
         $hasProcedure = $request->filled('procedure_type');
@@ -25,9 +37,15 @@ class TenderController extends Controller
         }
 
         if ($request->filled('type')) {
-            // Filtre explicite : le frontend peut cibler n'importe quel type
-            // (public, prive, aac, avis_general, plan_passation).
-            $query->where('type', $request->string('type'));
+            // Filtre explicite : le frontend peut cibler un ou plusieurs types
+            // (public, prive, aac, avis_general, plan_passation), séparés par
+            // des virgules pour une recherche unifiée multi-catégories.
+            $types = array_values(array_filter(array_map('trim', explode(',', (string) $request->string('type')))));
+            if (count($types) > 1) {
+                $query->whereIn('type', $types);
+            } else {
+                $query->where('type', $types[0] ?? (string) $request->string('type'));
+            }
         } elseif ($hasProcedure) {
             // Filtre procédure sans type explicite : on couvre les marchés
             // publics actifs/planifiés (avis formels + plans de passation),
@@ -44,7 +62,10 @@ class TenderController extends Controller
         }
         if ($request->filled('q')) {
             $q = '%'.$request->string('q').'%';
-            $query->where(fn ($sub) => $sub->where('title', 'ilike', $q)->orWhere('institution', 'ilike', $q));
+            $query->where(fn ($sub) => $sub->where('title', 'ilike', $q)
+                ->orWhere('title_fr', 'ilike', $q)
+                ->orWhere('institution', 'ilike', $q)
+                ->orWhere('reference', 'ilike', $q));
         }
 
         $paginator = $query->paginate(min(500, (int) $request->integer('per_page', 15)));
