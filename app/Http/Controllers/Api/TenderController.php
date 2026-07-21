@@ -17,10 +17,22 @@ class TenderController extends Controller
         if ($request->filled('country')) {
             $query->where('country', $request->string('country'));
         }
+        // Filtre par type de procédure de passation (sous-catégories « Appels
+        // d'offres publics » : cotation, drp, aaon, aaoi, ami, autre).
+        $hasProcedure = $request->filled('procedure_type');
+        if ($hasProcedure) {
+            $query->where('procedure_type', $request->string('procedure_type'));
+        }
+
         if ($request->filled('type')) {
             // Filtre explicite : le frontend peut cibler n'importe quel type
             // (public, prive, aac, avis_general, plan_passation).
             $query->where('type', $request->string('type'));
+        } elseif ($hasProcedure) {
+            // Filtre procédure sans type explicite : on couvre les marchés
+            // publics actifs/planifiés (avis formels + plans de passation),
+            // c'est là que vivent les procédures de passation.
+            $query->whereIn('type', ['public', 'aac', 'plan_passation']);
         } else {
             // Sans filtre : on ne renvoie que les opportunités actives dans la liste
             // principale (public, prive, aac). Les documents de planification

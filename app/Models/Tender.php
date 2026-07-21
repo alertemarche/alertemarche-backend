@@ -8,7 +8,7 @@ class Tender extends Model
 {
     protected $fillable = [
         'title', 'title_fr', 'institution', 'reference', 'location', 'estimated_amount',
-        'deadline', 'publication_date', 'nb_lots', 'country', 'type', 'market_type',
+        'deadline', 'publication_date', 'nb_lots', 'country', 'type', 'market_type', 'procedure_type',
         'source_name', 'source_url', 'dao_url', 'sectors', 'ai_summary', 'ai_processed',
         'dedup_hash', 'external_id', 'collected_at',
     ];
