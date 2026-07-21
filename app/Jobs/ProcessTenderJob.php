@@ -30,6 +30,17 @@ class ProcessTenderJob implements ShouldQueue
             return;
         }
 
+        // Chemin économe : les plans de passation (opérations planifiées de la
+        // DNCMP) sont déjà rédigés en français et remontent en très grand nombre.
+        // Les faire passer par GPT-4o coûterait cher sans réelle valeur ajoutée.
+        // On les classe localement (secteurs par mots-clés) et on les marque
+        // traités, sans appel API. Les avis formels (public/privé, parfois en
+        // anglais) continuent d'être résumés/traduits par l'IA.
+        if ($tender->type === 'plan_passation') {
+            $this->processLocally($tender);
+            return;
+        }
+
         $result = $ai->summarizeTender([
             'title' => $tender->title,
             'institution' => $tender->institution,
@@ -48,5 +59,79 @@ class ProcessTenderJob implements ShouldQueue
         ]);
 
         MatchTenderJob::dispatch($tender->id)->onQueue('matching');
+    }
+
+    /**
+     * Traitement local (sans IA) pour les opérations planifiées : titre déjà
+     * en français, secteurs déduits par mots-clés, résumé factuel concis.
+     */
+    protected function processLocally(Tender $tender): void
+    {
+        $sectors = $this->guessSectors($tender->title, $tender->market_type);
+
+        $parts = [];
+        if ($tender->market_type) {
+            $parts[] = 'Marché de '.mb_strtolower($tender->market_type);
+        }
+        if ($tender->institution) {
+            $parts[] = 'porté par '.$tender->institution;
+        }
+        $summary = 'Opération inscrite au plan de passation des marchés';
+        if ($parts) {
+            $summary .= ' ('.implode(', ', $parts).')';
+        }
+        $summary .= '. Consultez la source officielle (DNCMP) pour le détail et le calendrier prévisionnel.';
+
+        $tender->update([
+            'title_fr' => $tender->title,
+            'ai_summary' => $summary,
+            'sectors' => $sectors,
+            'ai_processed' => true,
+        ]);
+
+        // NB : pas de matching/alerte ici. Les plans de passation sont des
+        // opérations PRÉVISIONNELLES (calendrier planifié), remontées en très
+        // grand nombre. On les rend consultables sur la plateforme, mais on ne
+        // déclenche pas d'alerte WhatsApp/Email par ligne pour éviter d'inonder
+        // les abonnés et de générer des coûts d'envoi inutiles. Les alertes
+        // restent réservées aux avis formels (public/privé/aac).
+    }
+
+    /**
+     * Classification sectorielle locale par mots-clés, alignée sur le
+     * vocabulaire IA : BTP, Informatique, Santé, Agriculture, Énergie,
+     * Transport, Éducation, Environnement, Finance, Fournitures.
+     */
+    protected function guessSectors(?string $title, ?string $marketType): array
+    {
+        $t = mb_strtolower(trim(($title ?? '').' '.($marketType ?? '')));
+        if ($t === '') {
+            return [];
+        }
+
+        $map = [
+            'BTP' => ['travaux', 'construction', 'bâtiment', 'batiment', 'route', 'réhabilit', 'rehabilit', 'forage', 'génie civil', 'genie civil', 'voirie', 'pavage', 'ouvrage', 'aménagement', 'amenagement'],
+            'Informatique' => ['informatique', 'logiciel', 'numérique', 'numerique', 'digital', 'réseau', 'reseau', 'ordinateur', 'application', 'système d\'information', 'systeme d\'information'],
+            'Santé' => ['santé', 'sante', 'médic', 'medic', 'hôpital', 'hopital', 'sanitaire', 'pharmac', 'clinique', 'soins'],
+            'Agriculture' => ['agric', 'semence', 'engrais', 'élevage', 'elevage', 'pêche', 'peche', 'intrant', 'plant'],
+            'Énergie' => ['énergie', 'energie', 'électr', 'electr', 'solaire', 'photovolt', 'groupe électrogène', 'groupe electrogene'],
+            'Transport' => ['transport', 'véhicule', 'vehicule', 'roulant', 'logistique', 'automobile', 'moto'],
+            'Éducation' => ['écol', 'ecol', 'éducation', 'education', 'enseign', 'scolaire', 'formation', 'université', 'universite', 'pédagog', 'pedagog'],
+            'Environnement' => ['environnement', 'déchet', 'dechet', 'assainissement', 'eau', 'hygiène', 'hygiene', 'reboisement', 'climat'],
+            'Finance' => ['financ', 'assurance', 'comptab', 'audit', 'banque', 'fiscal', 'budgét', 'budget'],
+            'Fournitures' => ['fourniture', 'acquisition', 'équipement', 'equipement', 'mobilier', 'matériel', 'materiel', 'consommable'],
+        ];
+
+        $found = [];
+        foreach ($map as $sector => $needles) {
+            foreach ($needles as $n) {
+                if (str_contains($t, $n)) {
+                    $found[] = $sector;
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($found));
     }
 }
