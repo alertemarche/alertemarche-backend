@@ -12,9 +12,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->api(prepend: [
-            \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
-        ]);
+        // L'authentification est token-based (Bearer / Sanctum API tokens stockés en localStorage).
+        // EnsureFrontendRequestsAreStateful est retiré car il tente une validation CSRF session-based
+        // incompatible avec fetch() sans credentials:include → provoquait "CSRF token mismatch".
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
