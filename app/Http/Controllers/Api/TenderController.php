@@ -18,14 +18,22 @@ class TenderController extends Controller
             $query->where('country', $request->string('country'));
         }
 
-        // Filtre « actifs et à venir » : on exclut les avis expirés (date
-        // limite dépassée). Les avis sans date limite (plans de passation,
-        // avis généraux, marchés dont l'échéance n'est pas encore publiée)
-        // sont conservés car ils correspondent à des opportunités actives
-        // ou planifiées pour le futur.
-        if ($request->boolean('active')) {
-            $query->where(function ($q) {
-                $q->whereNull('deadline')->orWhere('deadline', '>=', now()->startOfDay());
+        // Filtre « actifs et à venir » (activé par défaut sauf si active=false) :
+        // - Exclut les AO avec deadline passée
+        // - Exclut les AO sans deadline créés il y a > 90 jours (cas des sources
+        //   inactives comme Plan International qui polluaient le site)
+        // - Les plans de passation et avis généraux sont toujours gardés (types spécifiques)
+        if (!$request->has('active') || $request->boolean('active')) {
+            $query->where(function ($q) use ($request) {
+                // Garder si deadline future
+                $q->where('deadline', '>=', now()->startOfDay())
+                  // OU si pas de deadline MAIS créé récemment (< 90 jours)
+                  ->orWhere(function ($sub) {
+                      $sub->whereNull('deadline')
+                          ->where('created_at', '>=', now()->subDays(90));
+                  })
+                  // OU si c'est un plan de passation / avis général (toujours pertinent)
+                  ->orWhereIn('type', ['plan_passation', 'avis_general']);
             });
         }
 
