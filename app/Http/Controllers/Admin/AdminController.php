@@ -41,6 +41,65 @@ class AdminController extends Controller
         ]);
     }
 
+    /**
+     * Statistiques d'alertes pour estimer la facture (WhatsApp + Email).
+     * Renvoie les totaux par canal, la ventilation par pays et par jour.
+     * Paramètre : days (période du détail journalier, défaut 30).
+     */
+    public function alertsStats(Request $request): JsonResponse
+    {
+        $days = max(1, min(180, (int) $request->integer('days', 30)));
+        $since = now()->subDays($days - 1)->startOfDay();
+
+        // Totaux cumulés par canal (toutes alertes effectivement envoyées).
+        $sent = Alert::where('status', 'sent');
+        $totals = [
+            'total'    => (clone $sent)->count(),
+            'email'    => (clone $sent)->where('sent_email', true)->count(),
+            'whatsapp' => (clone $sent)->where('sent_whatsapp', true)->count(),
+        ];
+
+        // Totaux sur la période demandée.
+        $sentPeriod = (clone $sent)->where('sent_at', '>=', $since);
+        $totalsPeriod = [
+            'total'    => (clone $sentPeriod)->count(),
+            'email'    => (clone $sentPeriod)->where('sent_email', true)->count(),
+            'whatsapp' => (clone $sentPeriod)->where('sent_whatsapp', true)->count(),
+        ];
+
+        // Ventilation par pays (via users.primary_country). Syntaxe FILTER PostgreSQL.
+        $byCountry = Alert::query()
+            ->join('users', 'users.id', '=', 'alerts.user_id')
+            ->where('alerts.status', 'sent')
+            ->selectRaw("COALESCE(users.primary_country, 'N/A') as country,
+                count(*) as total,
+                count(*) filter (where alerts.sent_email) as email,
+                count(*) filter (where alerts.sent_whatsapp) as whatsapp")
+            ->groupBy('users.primary_country')
+            ->orderByDesc('total')
+            ->get();
+
+        // Ventilation par jour sur la période.
+        $byDay = Alert::query()
+            ->where('status', 'sent')
+            ->where('sent_at', '>=', $since)
+            ->selectRaw("to_char(sent_at, 'YYYY-MM-DD') as day,
+                count(*) as total,
+                count(*) filter (where sent_email) as email,
+                count(*) filter (where sent_whatsapp) as whatsapp")
+            ->groupBy('day')
+            ->orderBy('day')
+            ->get();
+
+        return response()->json([
+            'totals'        => $totals,
+            'totals_period' => $totalsPeriod,
+            'period_days'   => $days,
+            'by_country'    => $byCountry,
+            'by_day'        => $byDay,
+        ]);
+    }
+
     /** Monitoring des robots de collecte (santé par robot). */
     public function scrapers(): JsonResponse
     {
