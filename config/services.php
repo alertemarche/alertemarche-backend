@@ -21,6 +21,9 @@ return [
         'verify_token' => env('WHATSAPP_VERIFY_TOKEN'),
         // Numéro expéditeur officiel AlerteMarché (affichage / templates).
         'sender_number' => env('WHATSAPP_SENDER_NUMBER', '+2290198524949'),
+        // Modèle (template) approuvé utilisé pour les alertes « à froid ».
+        'alert_template' => env('WHATSAPP_ALERT_TEMPLATE', 'alerte_opportunite'),
+        'alert_template_lang' => env('WHATSAPP_ALERT_LANG', 'fr'),
         'base_url' => 'https://graph.facebook.com/v20.0',
     ],
 

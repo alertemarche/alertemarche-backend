@@ -62,6 +62,71 @@ class WhatsAppService
         }
     }
 
+    /**
+     * Envoi d'un message via un modèle (template) approuvé par Meta.
+     * Obligatoire pour les messages « à froid » (alertes) hors fenêtre de 24 h.
+     *
+     * @param  string[]  $bodyParams  Paramètres positionnels du corps ({{1}}, {{2}}, ...)
+     */
+    public function sendTemplate(string $toPhone, string $templateName, string $langCode, array $bodyParams = []): bool
+    {
+        if (! $this->isConfigured()) {
+            Log::info('WhatsApp non configuré — modèle simulé.', ['to' => $toPhone, 'template' => $templateName]);
+
+            return false;
+        }
+
+        $components = [];
+        if (! empty($bodyParams)) {
+            $components[] = [
+                'type' => 'body',
+                'parameters' => array_map(
+                    fn ($p) => ['type' => 'text', 'text' => $this->sanitizeParam((string) $p)],
+                    $bodyParams
+                ),
+            ];
+        }
+
+        try {
+            $response = Http::withToken($this->token)->timeout(30)
+                ->post($this->baseUrl.'/'.$this->phoneId.'/messages', [
+                    'messaging_product' => 'whatsapp',
+                    'to' => $this->normalize($toPhone),
+                    'type' => 'template',
+                    'template' => [
+                        'name' => $templateName,
+                        'language' => ['code' => $langCode],
+                        'components' => $components,
+                    ],
+                ]);
+
+            if ($response->failed()) {
+                Log::error('WhatsApp (template) erreur HTTP', [
+                    'template' => $templateName,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp (template) exception', ['message' => $e->getMessage()]);
+
+            return false;
+        }
+    }
+
+    /** Les paramètres de template interdisent les retours à la ligne et espaces multiples. */
+    protected function sanitizeParam(string $value): string
+    {
+        $value = preg_replace('/[\r\n\t]+/', ' ', $value);
+        $value = preg_replace('/ {2,}/', ' ', $value);
+
+        return trim($value);
+    }
+
     protected function normalize(string $phone): string
     {
         return preg_replace('/[^0-9]/', '', $phone);

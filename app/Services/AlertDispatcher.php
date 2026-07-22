@@ -29,7 +29,14 @@ class AlertDispatcher
 
         $message = $this->formatTenderMessage($tender);
 
-        return $this->deliver($user, 'tender', $tender->id, $tender->title, $message, $score);
+        $waParams = [
+            $user->name ?: 'cher abonné',
+            $tender->title,
+            $tender->institution ?: 'Non communiqué',
+            $tender->deadline?->format('d/m/Y') ?: 'Non communiquée',
+        ];
+
+        return $this->deliver($user, 'tender', $tender->id, $tender->title, $message, $score, $waParams);
     }
 
     /** Diffuse une alerte de type besoin artisan. */
@@ -41,10 +48,20 @@ class AlertDispatcher
 
         $message = $this->formatNeedMessage($need);
 
-        return $this->deliver($user, 'artisan_need', $need->id, $need->trade.' — '.$need->locality, $message, $score);
+        $waParams = [
+            $user->name ?: 'cher abonné',
+            $need->trade.($need->locality ? ' — '.$need->locality : ''),
+            $need->employer_name ?: 'Entrepreneur privé',
+            $need->start_date?->format('d/m/Y') ?: 'À convenir',
+        ];
+
+        return $this->deliver($user, 'artisan_need', $need->id, $need->trade.' — '.$need->locality, $message, $score, $waParams);
     }
 
-    protected function deliver(User $user, string $type, int $sourceId, string $title, string $message, float $score): Alert
+    /**
+     * @param  string[]|null  $waParams  Paramètres positionnels du modèle WhatsApp (alerte à froid).
+     */
+    protected function deliver(User $user, string $type, int $sourceId, string $title, string $message, float $score, ?array $waParams = null): Alert
     {
         $isFree = ! $user->hasActiveSubscription();
 
@@ -66,9 +83,19 @@ class AlertDispatcher
         }
 
         // WhatsApp (abonnés payants uniquement)
+        // Meta impose un modèle (template) approuvé pour les messages « à froid ».
         $waOk = false;
         if ($user->whatsappEnabled() && $user->phone) {
-            $waOk = $this->whatsapp->sendText($user->phone, $message);
+            if (! empty($waParams)) {
+                $waOk = $this->whatsapp->sendTemplate(
+                    $user->phone,
+                    (string) config('services.whatsapp.alert_template', 'alerte_opportunite'),
+                    (string) config('services.whatsapp.alert_template_lang', 'fr'),
+                    $waParams
+                );
+            } else {
+                $waOk = $this->whatsapp->sendText($user->phone, $message);
+            }
         }
 
         $alert->update([
