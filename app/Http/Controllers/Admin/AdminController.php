@@ -12,6 +12,7 @@ use App\Models\Tender;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 /**
  * Back-office PRO BENIN SARL — statistiques, monitoring scrapers,
@@ -311,5 +312,240 @@ class AdminController extends Controller
         }
 
         return response()->json(['message' => $message, 'need' => $need]);
+    }
+
+    // =========================================================================
+    // NOUVELLES MÉTHODES — Gestion avancée du back-office
+    // =========================================================================
+
+    /**
+     * Connexion admin autonome — authentifie avec ADMIN_USER / ADMIN_PASSWORD
+     * (variables d'environnement) et renvoie un token Sanctum admin.
+     * Route publique : POST /api/admin/login (pas de middleware auth).
+     */
+    public function adminLogin(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
+        ]);
+
+        $expectedUser = env('ADMIN_USER', 'admin');
+        $expectedPass = env('ADMIN_PASSWORD', 'Internet123');
+
+        if ($data['username'] !== $expectedUser || $data['password'] !== $expectedPass) {
+            return response()->json(['message' => 'Identifiants administrateur incorrects.'], 401);
+        }
+
+        $adminEmail = env('ADMIN_EMAIL', 'admin@alertemarche.com');
+
+        $user = User::firstOrCreate(
+            ['email' => $adminEmail],
+            [
+                'name'             => 'Administrateur',
+                'organization'     => 'AlerteMarché',
+                'password'         => bcrypt($expectedPass),
+                'is_admin'         => true,
+                'email_verified_at'=> now(),
+                'primary_country'  => 'BJ',
+                'profile_type'     => 'prestataire',
+                'phone'            => '+229 00000000',
+            ]
+        );
+
+        if (!$user->is_admin) {
+            $user->update(['is_admin' => true]);
+        }
+
+        // Invalider les anciens tokens admin et en créer un nouveau
+        $user->tokens()->where('name', 'admin-session')->delete();
+        $token = $user->createToken('admin-session')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user'  => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email, 'is_admin' => true],
+        ]);
+    }
+
+    /**
+     * Supprime définitivement un utilisateur (non-admin uniquement).
+     * Annule ses abonnements actifs et révoque ses tokens.
+     */
+    public function deleteUser(Request $request, User $user): JsonResponse
+    {
+        if ($user->id === $request->user()->id) {
+            return response()->json(['message' => 'Impossible de supprimer votre propre compte.'], 403);
+        }
+        if ($user->is_admin) {
+            return response()->json(['message' => 'Impossible de supprimer un compte administrateur.'], 403);
+        }
+        $user->tokens()->delete();
+        $user->subscriptions()->update(['status' => 'cancelled']);
+        $user->delete();
+        return response()->json(['message' => 'Utilisateur supprimé avec succès.']);
+    }
+
+    /**
+     * Bascule l'état de suspension d'un utilisateur.
+     * Un utilisateur suspendu ne peut plus se connecter.
+     */
+    public function toggleSuspend(Request $request, User $user): JsonResponse
+    {
+        if ($user->is_admin) {
+            return response()->json(['message' => 'Impossible de suspendre un administrateur.'], 403);
+        }
+        $user->update(['is_suspended' => !$user->is_suspended]);
+        return response()->json([
+            'message'      => $user->is_suspended ? 'Utilisateur suspendu.' : 'Utilisateur réactivé.',
+            'is_suspended' => (bool) $user->is_suspended,
+        ]);
+    }
+
+    /**
+     * Crée un utilisateur manuellement (sans passer par l'inscription normale).
+     * Peut également créer un abonnement actif immédiatement sans paiement.
+     */
+    public function createUserManual(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name'            => ['required', 'string', 'max:255'],
+            'organization'    => ['nullable', 'string', 'max:255'],
+            'email'           => ['required', 'email', 'unique:users,email'],
+            'phone'           => ['required', 'string', 'max:30'],
+            'profile_type'    => ['required', 'string'],
+            'primary_country' => ['required', 'string', 'max:5'],
+            'plan'            => ['nullable', 'string'],
+            'duration_months' => ['nullable', 'integer', 'min:1', 'max:36'],
+        ]);
+
+        $tempPassword = Str::random(10);
+
+        $user = User::create([
+            'name'             => $data['name'],
+            'organization'     => $data['organization'] ?? $data['name'],
+            'email'            => $data['email'],
+            'phone'            => $data['phone'],
+            'profile_type'     => $data['profile_type'],
+            'primary_country'  => $data['primary_country'],
+            'password'         => bcrypt($tempPassword),
+            'email_verified_at'=> now(),
+        ]);
+
+        $sub = null;
+        if (!empty($data['plan'])) {
+            $planAmounts = [
+                'mensuel'     => 15000,
+                'trimestriel' => 40000,
+                'semestriel'  => 70000,
+                'annuel'      => 120000,
+            ];
+            $duration = $data['duration_months'] ?? match ($data['plan']) {
+                'mensuel'     => 1,
+                'trimestriel' => 3,
+                'semestriel'  => 6,
+                default       => 12,
+            };
+
+            $sub = Subscription::create([
+                'user_id'           => $user->id,
+                'plan'              => $data['plan'],
+                'duration_months'   => $duration,
+                'amount'            => $planAmounts[$data['plan']] ?? 0,
+                'status'            => 'active',
+                'started_at'        => now(),
+                'expires_at'        => now()->addMonths($duration),
+                'payment_reference' => 'ADMIN-MANUAL-' . strtoupper(Str::random(6)),
+            ]);
+        }
+
+        return response()->json([
+            'message'      => 'Utilisateur créé avec succès.',
+            'user'         => ['id' => $user->id, 'email' => $user->email, 'temp_password' => $tempPassword],
+            'subscription' => $sub,
+        ], 201);
+    }
+
+    /**
+     * Accorde un abonnement actif à un utilisateur existant sans paiement.
+     * Annule l'éventuel abonnement actif précédent.
+     */
+    public function grantSubscription(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'user_id'         => ['required', 'integer', 'exists:users,id'],
+            'plan'            => ['required', 'string'],
+            'duration_months' => ['required', 'integer', 'min:1', 'max:36'],
+            'amount'          => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $planAmounts = ['mensuel' => 15000, 'trimestriel' => 40000, 'semestriel' => 70000, 'annuel' => 120000];
+        $amount = $data['amount'] ?? ($planAmounts[$data['plan']] ?? 0);
+
+        Subscription::where('user_id', $data['user_id'])->where('status', 'active')->update(['status' => 'cancelled']);
+
+        $sub = Subscription::create([
+            'user_id'           => $data['user_id'],
+            'plan'              => $data['plan'],
+            'duration_months'   => $data['duration_months'],
+            'amount'            => $amount,
+            'status'            => 'active',
+            'started_at'        => now(),
+            'expires_at'        => now()->addMonths($data['duration_months']),
+            'payment_reference' => 'ADMIN-GRANT-' . strtoupper(Str::random(6)),
+        ]);
+
+        return response()->json(['message' => 'Abonnement accordé avec succès.', 'subscription' => $sub], 201);
+    }
+
+    /**
+     * Liste de tous les paiements / transactions (abonnements avec référence de paiement).
+     * Distingue les paiements réels (KKiaPay) des créations manuelles par l'admin.
+     */
+    public function payments(Request $request): JsonResponse
+    {
+        $query = Subscription::query()->with('user')->latest();
+
+        $map = function (Subscription $s) {
+            $ref = $s->payment_reference ?? '';
+            $isManual = str_starts_with($ref, 'ADMIN');
+            return [
+                'id'                => $s->id,
+                'user_id'           => $s->user_id,
+                'organization'      => $s->user?->organization,
+                'name'              => $s->user?->name,
+                'email'             => $s->user?->email,
+                'phone'             => $s->user?->phone,
+                'plan'              => $s->plan,
+                'duration_months'   => $s->duration_months,
+                'amount'            => (int) $s->amount,
+                'status'            => $s->status,
+                'payment_reference' => $ref,
+                'is_manual'         => $isManual,
+                'started_at'        => $s->started_at,
+                'created_at'        => $s->created_at,
+            ];
+        };
+
+        $totalReal = (int) Subscription::whereNotNull('payment_reference')
+            ->where('payment_reference', 'not like', 'ADMIN%')
+            ->sum('amount');
+
+        if ($request->boolean('all')) {
+            return response()->json([
+                'data'       => $query->get()->map($map)->values(),
+                'total_real' => $totalReal,
+                'total_all'  => (int) Subscription::sum('amount'),
+            ]);
+        }
+
+        $page = $query->paginate(50);
+        return response()->json([
+            'data'         => collect($page->items())->map($map)->values(),
+            'current_page' => $page->currentPage(),
+            'last_page'    => $page->lastPage(),
+            'total'        => $page->total(),
+            'total_real'   => $totalReal,
+            'total_all'    => (int) Subscription::sum('amount'),
+        ]);
     }
 }

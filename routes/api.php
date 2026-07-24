@@ -64,6 +64,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/otp/resend', [AuthController::class, 'resendOtp']);
 });
 
+// Connexion admin autonome (route publique — pas de middleware auth)
+Route::post('/admin/login', [AdminController::class, 'adminLogin']);
+
 // Paiement — KKiaPay
 Route::get('/payments/kkiapay/config', [PaymentController::class, 'config']);   // clé publique widget
 Route::post('/payments/kkiapay/webhook', [PaymentController::class, 'webhook']); // serveur-à-serveur (public)
@@ -99,8 +102,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);
         Route::get('/alerts-stats', [AdminController::class, 'alertsStats']);
         Route::get('/scrapers', [AdminController::class, 'scrapers']);
+        // Utilisateurs
         Route::get('/users', [AdminController::class, 'users']);
+        Route::post('/users', [AdminController::class, 'createUserManual']);
+        Route::delete('/users/{user}', [AdminController::class, 'deleteUser']);
+        Route::patch('/users/{user}/suspend', [AdminController::class, 'toggleSuspend']);
+        // Abonnements
         Route::get('/subscriptions', [AdminController::class, 'subscriptions']);
+        Route::post('/subscriptions/grant', [AdminController::class, 'grantSubscription']);
+        // Paiements
+        Route::get('/payments', [AdminController::class, 'payments']);
+        // Annonces
         Route::get('/needs/pending', [AdminController::class, 'pendingNeeds']);
         Route::post('/needs/{need}/validate', [AdminController::class, 'validateNeed']);
     });

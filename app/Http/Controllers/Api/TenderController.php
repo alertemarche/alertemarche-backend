@@ -12,7 +12,30 @@ class TenderController extends Controller
     /** Listing public des appels d'offres avec filtres pays/secteur/type. */
     public function index(Request $request): JsonResponse
     {
-        $query = Tender::query()->where('ai_processed', true)->latest('collected_at');
+        $query = Tender::query()->where('ai_processed', true);
+
+        // Tri serveur (s'applique à TOUS les résultats, pas seulement à la page
+        // affichée) — aligné sur les options du frontend / des concurrents :
+        //   • recent   : les plus récemment publiés/collectés (défaut)
+        //   • deadline : échéance de soumission la plus proche d'abord
+        //   • budget   : montant estimé le plus élevé d'abord
+        switch ((string) $request->string('sort')) {
+            case 'deadline':
+                // Les avis sans deadline passent en dernier (NULLS LAST).
+                $query->orderByRaw('deadline IS NULL, deadline ASC')
+                      ->orderByDesc('collected_at');
+                break;
+            case 'budget':
+                // estimated_amount est un texte libre (ex. « 150 000 000 FCFA » ou
+                // « Non communiqué ») : on extrait les chiffres et on trie en
+                // numérique décroissant, les montants absents/nuls en dernier.
+                $query->orderByRaw("NULLIF(regexp_replace(COALESCE(estimated_amount, ''), '[^0-9]', '', 'g'), '')::numeric DESC NULLS LAST")
+                      ->orderByDesc('collected_at');
+                break;
+            default: // recent
+                $query->orderByRaw('COALESCE(publication_date, collected_at::date) DESC')
+                      ->orderByDesc('collected_at');
+        }
 
         if ($request->filled('country')) {
             $query->where('country', $request->string('country'));
