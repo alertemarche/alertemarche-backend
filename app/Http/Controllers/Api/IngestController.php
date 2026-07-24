@@ -28,7 +28,7 @@ class IngestController extends Controller
             'items.*.deadline' => ['nullable', 'date'],
             'items.*.publication_date' => ['nullable', 'date'],
             'items.*.nb_lots' => ['nullable', 'integer'],
-            'items.*.country' => ['required', Rule::in(['BJ', 'TG', 'CI'])],
+            'items.*.country' => ['required', Rule::in(['BJ', 'TG', 'CI', 'SN'])],
             'items.*.type' => ['nullable', Rule::in(['public', 'prive', 'aac', 'avis_general', 'plan_passation'])],
             'items.*.market_type' => ['nullable', 'string'],
             'items.*.procedure_type' => ['nullable', 'string'],
@@ -93,7 +93,7 @@ class IngestController extends Controller
     public function log(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'country' => ['required', Rule::in(['BJ', 'TG', 'CI'])],
+            'country' => ['required', Rule::in(['BJ', 'TG', 'CI', 'SN'])],
             'source_name' => ['required', 'string'],
             'status' => ['required', Rule::in(['success', 'failure'])],
             'items_collected' => ['nullable', 'integer'],

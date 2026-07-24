@@ -35,7 +35,7 @@ class ArtisanNeedController extends Controller
             'description' => ['nullable', 'string'],
             'locality' => ['required', 'string', 'max:255'],
             'region' => ['nullable', 'string', 'max:255'],
-            'country' => ['required', Rule::in(['BJ', 'TG', 'CI'])],
+            'country' => ['required', Rule::in(['BJ', 'TG', 'CI', 'SN'])],
             'estimated_budget' => ['nullable', 'string', 'max:255'],
             'duration' => ['nullable', 'string', 'max:255'],
             'start_date' => ['nullable', 'date'],
