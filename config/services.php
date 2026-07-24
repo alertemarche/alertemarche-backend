@@ -5,6 +5,13 @@ return [
         'key' => env('OPENAI_API_KEY'),
         'model' => env('OPENAI_MODEL', 'gpt-4o'),
         'base_url' => env('OPENAI_BASE_URL', 'https://api.openai.com/v1'),
+        // OCR/vision : lecture du PDF de l'avis (y compris scanné) pour en
+        // extraire la date limite et le montant. Modèle multimodal requis.
+        'ocr_enabled' => (bool) env('OPENAI_OCR_ENABLED', true),
+        'ocr_model' => env('OPENAI_OCR_MODEL', env('OPENAI_MODEL', 'gpt-4o')),
+        // Taille maximale du PDF téléchargé pour OCR (Mo). Au-delà, on ignore
+        // pour éviter des coûts et des temps de traitement excessifs.
+        'ocr_max_mb' => (int) env('OPENAI_OCR_MAX_MB', 12),
     ],
 
     'brevo' => [

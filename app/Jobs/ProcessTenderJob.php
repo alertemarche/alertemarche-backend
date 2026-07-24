@@ -41,6 +41,28 @@ class ProcessTenderJob implements ShouldQueue
             return;
         }
 
+        // OCR/vision : pour les avis formels dont la date limite ou le montant
+        // manque, on lit le PDF de l'avis (dao_url) avec GPT-4o — y compris les
+        // documents SCANNÉS (images). Un seul OCR par avis (flag ocr_processed),
+        // résultat mis en cache 30 j côté service pour maîtriser les coûts.
+        if (! $tender->ocr_processed
+            && ! empty($tender->dao_url)
+            && (empty($tender->deadline) || empty($tender->estimated_amount))
+            && in_array($tender->type, ['public', 'prive', 'aac'], true)) {
+            $meta = $ai->extractPdfMeta($tender->dao_url);
+            $ocrUpdate = ['ocr_processed' => true];
+            if ($meta) {
+                if (empty($tender->deadline) && ! empty($meta['deadline'])) {
+                    $ocrUpdate['deadline'] = $meta['deadline'];
+                }
+                if (empty($tender->estimated_amount) && ! empty($meta['estimated_amount'])) {
+                    $ocrUpdate['estimated_amount'] = $meta['estimated_amount'];
+                }
+            }
+            $tender->update($ocrUpdate);
+            $tender->refresh();
+        }
+
         $result = $ai->summarizeTender([
             'title' => $tender->title,
             'institution' => $tender->institution,

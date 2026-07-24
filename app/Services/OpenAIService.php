@@ -123,6 +123,118 @@ class OpenAIService
     }
 
     /** Appel bas niveau — renvoie un tableau décodé depuis le JSON du modèle. */
+    /**
+     * OCR/vision : télécharge le PDF d'un avis (dao_url) et demande à GPT-4o
+     * d'en extraire la DATE LIMITE de dépôt et le MONTANT estimatif.
+     *
+     * Fonctionne y compris pour les PDF SCANNÉS (images), grâce à la vision du
+     * modèle. Résultat mis en cache 30 jours par URL pour maîtriser les coûts.
+     *
+     * @return array{deadline: ?string, estimated_amount: ?string}|null
+     *         'deadline' au format 'YYYY-MM-DD' (ou null), 'estimated_amount'
+     *         chaîne avec devise (ou null). null si OCR indisponible/échec.
+     */
+    public function extractPdfMeta(?string $daoUrl): ?array
+    {
+        if (! config('services.openai.ocr_enabled', true)) {
+            return null;
+        }
+        if (empty($this->key)) {
+            Log::warning('OpenAI OCR : clé API absente.');
+
+            return null;
+        }
+        if (empty($daoUrl) || ! preg_match('#^https?://#i', $daoUrl)) {
+            return null;
+        }
+
+        $cacheKey = 'ocr_pdf_'.md5($daoUrl);
+
+        return Cache::remember($cacheKey, now()->addDays(30), function () use ($daoUrl) {
+            // 1) Téléchargement du PDF (borné en taille).
+            $maxBytes = max(1, (int) config('services.openai.ocr_max_mb', 12)) * 1024 * 1024;
+            try {
+                $dl = Http::withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (compatible; AlerteMarcheBot/1.0)',
+                ])->timeout(60)->withOptions(['verify' => false])->get($daoUrl);
+            } catch (\Throwable $e) {
+                Log::warning('OpenAI OCR : téléchargement PDF échoué', ['url' => $daoUrl, 'err' => $e->getMessage()]);
+
+                return null;
+            }
+            if ($dl->failed()) {
+                return null;
+            }
+            $bytes = $dl->body();
+            if ($bytes === '' || strlen($bytes) > $maxBytes) {
+                return null;
+            }
+            // Vérifie l'entête PDF (%PDF) — on n'envoie pas des pages HTML.
+            if (! str_starts_with(ltrim($bytes), '%PDF')) {
+                return null;
+            }
+
+            // 2) Appel GPT-4o Vision avec le PDF en pièce jointe (base64).
+            $dataUri = 'data:application/pdf;base64,'.base64_encode($bytes);
+            $prompt = "Tu analyses un AVIS D'APPEL D'OFFRES (document PDF, éventuellement scanné).\n"
+                ."Extrais uniquement :\n"
+                ."1. La DATE LIMITE de dépôt/remise des offres (l'échéance de soumission). "
+                ."Format STRICT 'AAAA-MM-JJ'. Si absente ou illisible, mets null.\n"
+                ."2. Le MONTANT ESTIMATIF / budget prévisionnel du marché, avec sa devise "
+                ."(ex : '150 000 000 FCFA'). S'il n'est pas explicitement indiqué, mets null "
+                ."(n'invente jamais un montant).\n"
+                ."Réponds STRICTEMENT en JSON : {\"deadline\": \"AAAA-MM-JJ\"|null, \"estimated_amount\": \"...\"|null}";
+
+            try {
+                $response = Http::withToken($this->key)
+                    ->timeout(120)
+                    ->post($this->baseUrl.'/chat/completions', [
+                        'model' => config('services.openai.ocr_model', $this->model),
+                        'messages' => [
+                            ['role' => 'system', 'content' => 'Tu réponds uniquement en JSON valide, en français.'],
+                            ['role' => 'user', 'content' => [
+                                ['type' => 'text', 'text' => $prompt],
+                                ['type' => 'file', 'file' => ['filename' => 'avis.pdf', 'file_data' => $dataUri]],
+                            ]],
+                        ],
+                        'response_format' => ['type' => 'json_object'],
+                        'temperature' => 0.1,
+                    ]);
+            } catch (\Throwable $e) {
+                Log::error('OpenAI OCR exception', ['message' => $e->getMessage()]);
+
+                return null;
+            }
+
+            if ($response->failed()) {
+                Log::error('OpenAI OCR erreur HTTP', ['status' => $response->status(), 'body' => mb_substr($response->body(), 0, 300)]);
+
+                return null;
+            }
+
+            $content = $response->json('choices.0.message.content');
+            $data = $content ? json_decode($content, true) : null;
+            if (! is_array($data)) {
+                return null;
+            }
+
+            // Normalisation défensive.
+            $deadline = null;
+            if (! empty($data['deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim((string) $data['deadline']))) {
+                $deadline = trim((string) $data['deadline']);
+            }
+            $amount = null;
+            if (! empty($data['estimated_amount'])) {
+                $amount = trim((string) $data['estimated_amount']);
+                if (mb_strlen($amount) > 120 || preg_match('/^(null|non communiqu|n\/a|aucun)/i', $amount)) {
+                    $amount = null;
+                }
+            }
+
+            return ['deadline' => $deadline, 'estimated_amount' => $amount];
+        });
+    }
+
     protected function askJson(string $prompt): ?array
     {
         if (empty($this->key)) {
