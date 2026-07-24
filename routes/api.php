@@ -102,6 +102,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/stats', [AdminController::class, 'stats']);
         Route::get('/alerts-stats', [AdminController::class, 'alertsStats']);
         Route::get('/scrapers', [AdminController::class, 'scrapers']);
+        Route::get('/activity-calendar', [AdminController::class, 'activityCalendar']);
         // Utilisateurs
         Route::get('/users', [AdminController::class, 'users']);
         Route::post('/users', [AdminController::class, 'createUserManual']);

@@ -155,6 +155,79 @@ class AdminController extends Controller
     }
 
     /**
+     * Calendrier d'activité mensuel : pour chaque jour du mois demandé,
+     * nombre d'appels d'offres collectés, d'alertes e-mail envoyées et
+     * d'autres nouveautés (items_new des robots). Ventilé par pays.
+     * Paramètres : month (YYYY-MM, défaut mois courant), country (optionnel).
+     */
+    public function activityCalendar(Request $request): JsonResponse
+    {
+        // Mois demandé (format YYYY-MM), sinon mois courant.
+        $monthParam = (string) $request->query('month', '');
+        try {
+            $start = $monthParam !== ''
+                ? \Carbon\Carbon::createFromFormat('Y-m-d', $monthParam . '-01')->startOfMonth()
+                : now()->startOfMonth();
+        } catch (\Throwable $e) {
+            $start = now()->startOfMonth();
+        }
+        $end = (clone $start)->endOfMonth();
+        $country = $request->query('country'); // 'BJ' | 'CI' | 'TG' | null
+
+        // Appels d'offres collectés par jour (et par pays).
+        $tenders = Tender::query()
+            ->whereBetween('collected_at', [$start, $end])
+            ->when($country, fn ($q) => $q->where('country', $country))
+            ->selectRaw("to_char(collected_at, 'YYYY-MM-DD') as day, count(*) as total")
+            ->groupBy('day')->pluck('total', 'day');
+
+        // Alertes e-mail envoyées par jour (jointure users pour le pays).
+        $alerts = Alert::query()
+            ->join('users', 'users.id', '=', 'alerts.user_id')
+            ->where('alerts.status', 'sent')
+            ->where('alerts.sent_email', true)
+            ->whereBetween('alerts.sent_at', [$start, $end])
+            ->when($country, fn ($q) => $q->where('users.primary_country', $country))
+            ->selectRaw("to_char(alerts.sent_at, 'YYYY-MM-DD') as day, count(*) as total")
+            ->groupBy('day')->pluck('total', 'day');
+
+        // Autres nouveautés : items_new agrégés des robots par jour (et par pays).
+        $others = ScraperLog::query()
+            ->whereBetween('ran_at', [$start, $end])
+            ->when($country, fn ($q) => $q->where('country', $country))
+            ->selectRaw("to_char(ran_at, 'YYYY-MM-DD') as day, coalesce(sum(items_new),0) as total")
+            ->groupBy('day')->pluck('total', 'day');
+
+        // Construit une entrée par jour du mois.
+        $days = [];
+        $totTenders = 0; $totAlerts = 0; $totOthers = 0;
+        for ($d = (clone $start); $d->lte($end); $d->addDay()) {
+            $key = $d->format('Y-m-d');
+            $t = (int) ($tenders[$key] ?? 0);
+            $a = (int) ($alerts[$key] ?? 0);
+            $o = (int) ($others[$key] ?? 0);
+            $totTenders += $t; $totAlerts += $a; $totOthers += $o;
+            $days[] = [
+                'date'             => $key,
+                'tenders_collected' => $t,
+                'alerts_sent'      => $a,
+                'items_new'        => $o,
+            ];
+        }
+
+        return response()->json([
+            'month'   => $start->format('Y-m'),
+            'country' => $country ?: 'all',
+            'days'    => $days,
+            'totals'  => [
+                'tenders_collected' => $totTenders,
+                'alerts_sent'       => $totAlerts,
+                'items_new'         => $totOthers,
+            ],
+        ]);
+    }
+
+    /**
      * Liste des utilisateurs enrichie (entreprise, contact, abonnement).
      * Paramètres : profile_type, country, q (recherche), all=1 (liste
      * complète pour export CSV), sinon pagination 25.
@@ -433,12 +506,8 @@ class AdminController extends Controller
 
         $sub = null;
         if (!empty($data['plan'])) {
-            $planAmounts = [
-                'mensuel'     => 15000,
-                'trimestriel' => 40000,
-                'semestriel'  => 70000,
-                'annuel'      => 120000,
-            ];
+            $planAmounts = collect(config('plans.plans', []))
+                ->map(fn ($p) => (int) ($p['amount'] ?? 0))->all();
             $duration = $data['duration_months'] ?? match ($data['plan']) {
                 'mensuel'     => 1,
                 'trimestriel' => 3,
@@ -478,7 +547,8 @@ class AdminController extends Controller
             'amount'          => ['nullable', 'integer', 'min:0'],
         ]);
 
-        $planAmounts = ['mensuel' => 15000, 'trimestriel' => 40000, 'semestriel' => 70000, 'annuel' => 120000];
+        $planAmounts = collect(config('plans.plans', []))
+            ->map(fn ($p) => (int) ($p['amount'] ?? 0))->all();
         $amount = $data['amount'] ?? ($planAmounts[$data['plan']] ?? 0);
 
         Subscription::where('user_id', $data['user_id'])->where('status', 'active')->update(['status' => 'cancelled']);
