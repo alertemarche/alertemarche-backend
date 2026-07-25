@@ -101,10 +101,14 @@ class TenderController extends Controller
 
         $paginator = $query->paginate(min(500, (int) $request->integer('per_page', 15)));
 
+        // Paywall freemium : les champs sensibles (budget, date limite, référence,
+        // liens officiels) ne sont visibles que pour les abonnés payants actifs.
+        $unlocked = $this->userHasAccess();
+
         // Affichage francisé : on expose le titre français quand il est disponible,
         // tout en conservant le titre d'origine dans `title_original` (traçabilité).
-        $paginator->getCollection()->transform(function (Tender $tender) {
-            return $this->frenchify($tender);
+        $paginator->getCollection()->transform(function (Tender $tender) use ($unlocked) {
+            return $this->applyPaywall($this->frenchify($tender), $unlocked);
         });
 
         return response()->json($paginator);
@@ -112,7 +116,45 @@ class TenderController extends Controller
 
     public function show(Tender $tender): JsonResponse
     {
-        return response()->json($this->frenchify($tender));
+        $unlocked = $this->userHasAccess();
+
+        return response()->json($this->applyPaywall($this->frenchify($tender), $unlocked));
+    }
+
+    /**
+     * Détermine si l'utilisateur courant a accès aux données complètes.
+     * Vrai uniquement pour un utilisateur authentifié disposant d'un
+     * abonnement payant actif. Les visiteurs anonymes et les inscrits sans
+     * abonnement (plan gratuit) reçoivent des avis « verrouillés ».
+     */
+    protected function userHasAccess(): bool
+    {
+        $user = auth('sanctum')->user();
+
+        return $user !== null && $user->hasActiveSubscription();
+    }
+
+    /**
+     * Applique la logique de paywall à un avis.
+     * - `is_locked` = false et données complètes pour les abonnés actifs.
+     * - `is_locked` = true et champs sensibles masqués (null) sinon.
+     */
+    protected function applyPaywall(Tender $tender, bool $unlocked): Tender
+    {
+        if ($unlocked) {
+            $tender->setAttribute('is_locked', false);
+
+            return $tender;
+        }
+
+        $tender->setAttribute('estimated_amount', null);
+        $tender->setAttribute('deadline', null);
+        $tender->setAttribute('reference', null);
+        $tender->setAttribute('source_url', null);
+        $tender->setAttribute('dao_url', null);
+        $tender->setAttribute('is_locked', true);
+
+        return $tender;
     }
 
     /** Remplace le titre affiché par sa traduction française si disponible. */

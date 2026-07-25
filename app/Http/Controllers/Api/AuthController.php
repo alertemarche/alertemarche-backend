@@ -183,6 +183,7 @@ class AuthController extends Controller
         return response()->json([
             'user' => $user,
             'subscription' => $user->activeSubscription(),
+            'has_active_subscription' => $user->hasActiveSubscription(),
             'free_alerts_remaining' => $user->freeAlertsRemaining(),
         ]);
     }
