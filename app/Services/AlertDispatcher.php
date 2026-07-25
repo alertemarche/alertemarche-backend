@@ -131,15 +131,22 @@ class AlertDispatcher
     {
         $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire"][$tender->country] ?? $tender->country;
 
-        return "🔔 Nouvelle opportunité — AlerteMarché\n\n"
-            ."📌 Objet : {$tender->title}\n"
-            ."🏛 Institution : {$tender->institution}\n"
-            ."💰 Montant : ".($tender->estimated_amount ?: 'Non communiqué')."\n"
-            ."📅 Date limite : ".($tender->deadline?->format('d/m/Y') ?: 'Non communiquée')."\n"
-            ."🌍 Pays : {$pays}\n\n"
-            .($tender->ai_summary ? "📝 {$tender->ai_summary}\n\n" : '')
-            ."👉 Voir sur le site officiel : {$tender->source_url}\n\n"
-            ."— Alerte envoyée par AlerteMarche.com";
+        // Génère du HTML pour l'email (les \n sont convertis en <br> via nl2br, mais on ajoute aussi du HTML pour le lien)
+        $message = "🔔 <strong>Nouvelle opportunité — AlerteMarché</strong><br><br>"
+            ."📌 <strong>Objet :</strong> {$tender->title}<br>"
+            ."🏛 <strong>Institution :</strong> {$tender->institution}<br>"
+            ."💰 <strong>Montant :</strong> ".($tender->estimated_amount ?: 'Non communiqué')."<br>"
+            ."📅 <strong>Date limite :</strong> ".($tender->deadline?->format('d/m/Y') ?: 'Non communiquée')."<br>"
+            ."🌍 <strong>Pays :</strong> {$pays}<br><br>";
+
+        if ($tender->ai_summary) {
+            $message .= "📝 {$tender->ai_summary}<br><br>";
+        }
+
+        $message .= '👉 <strong>Voir sur le site officiel :</strong> <a href="'.htmlspecialchars($tender->source_url, ENT_QUOTES, 'UTF-8').'" style="color:#1a7f5a;text-decoration:underline;">'.htmlspecialchars($tender->source_url, ENT_QUOTES, 'UTF-8').'</a><br><br>'
+            .'<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">— Alerte envoyée par AlerteMarche.com</p>';
+
+        return $message;
     }
 
     /** Format message WhatsApp/Email — Besoin Artisan (cahier des charges 5.3). */
@@ -148,13 +155,15 @@ class AlertDispatcher
         $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire"][$need->country] ?? $need->country;
         $loc = $need->locality.($need->region ? ", {$need->region}" : '')." — {$pays}";
 
-        return "🔔 Nouvelle opportunité — AlerteMarché\n\n"
-            ."🛠 Domaine : {$need->trade}\n"
-            ."🏢 Employeur : ".($need->employer_name ?: 'Entrepreneur privé')."\n"
-            ."👷 Besoin : ".($need->people_needed ?: 'Non précisé')."\n"
-            ."📍 Localité : {$loc}\n"
-            ."📅 Date de début souhaitée : ".($need->start_date?->format('d/m/Y') ?: 'À convenir')."\n\n"
-            ."📞 Contacter directement : {$need->contact}\n\n"
-            ."— Alerte envoyée par AlerteMarche.com";
+        $message = "🔔 <strong>Nouvelle opportunité — AlerteMarché</strong><br><br>"
+            ."🛠 <strong>Domaine :</strong> {$need->trade}<br>"
+            ."🏢 <strong>Employeur :</strong> ".($need->employer_name ?: 'Entrepreneur privé')."<br>"
+            ."👷 <strong>Besoin :</strong> ".($need->people_needed ?: 'Non précisé')."<br>"
+            ."📍 <strong>Localité :</strong> {$loc}<br>"
+            ."📅 <strong>Date de début souhaitée :</strong> ".($need->start_date?->format('d/m/Y') ?: 'À convenir')."<br><br>"
+            ."📞 <strong>Contacter directement :</strong> {$need->contact}<br><br>"
+            .'<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">— Alerte envoyée par AlerteMarche.com</p>';
+
+        return $message;
     }
 }
