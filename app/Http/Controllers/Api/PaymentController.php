@@ -82,6 +82,15 @@ class PaymentController extends Controller
     {
         Log::info('KKiaPay webhook reçu', $request->all());
 
+        // Validation de la signature webhook pour sécurité maximale
+        if (!$this->validateWebhookSignature($request)) {
+            Log::warning('KKiaPay webhook signature invalide', [
+                'headers' => $request->headers->all(),
+                'ip' => $request->ip(),
+            ]);
+            return response()->json(['error' => 'Invalid signature'], 401);
+        }
+
         $transactionId = $request->input('transactionId') ?? $request->input('reference');
         $status = strtoupper((string) $request->input('status'));
 
@@ -97,6 +106,31 @@ class PaymentController extends Controller
         }
 
         return response()->json(['received' => true]);
+    }
+
+    /** Valide la signature du webhook KKiaPay. */
+    protected function validateWebhookSignature(Request $request): bool
+    {
+        $webhookSecret = config('services.kkiapay.webhook_secret');
+        
+        // Si aucun secret configuré, on accepte (rétro-compatibilité)
+        if (empty($webhookSecret)) {
+            return true;
+        }
+
+        $signature = $request->header('X-Kkiapay-Signature') 
+                  ?? $request->header('X-Signature')
+                  ?? $request->header('Signature');
+
+        if (empty($signature)) {
+            return false;
+        }
+
+        // KKiaPay utilise HMAC-SHA256 du payload JSON
+        $payload = $request->getContent();
+        $expectedSignature = hash_hmac('sha256', $payload, $webhookSecret);
+
+        return hash_equals($expectedSignature, $signature);
     }
 
     /** Active un abonnement et débloque WhatsApp pour l'utilisateur. */

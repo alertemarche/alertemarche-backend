@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminController;
+use App\Http\Controllers\Admin\NewsletterAmController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ArtisanNeedController;
 use App\Http\Controllers\Api\AuthController;
@@ -116,5 +117,18 @@ Route::middleware('auth:sanctum')->group(function () {
         // Annonces
         Route::get('/needs/pending', [AdminController::class, 'pendingNeeds']);
         Route::post('/needs/{need}/validate', [AdminController::class, 'validateNeed']);
+
+        // Secteurs (référentiel + nombre d'abonnés par secteur)
+        Route::get('/sectors', [NewsletterAmController::class, 'sectors']);
+        Route::post('/sectors/assign', [NewsletterAmController::class, 'assignSector']);
+
+        // Newsletters & Annonces publicitaires
+        // /target-count doit précéder les routes à paramètre {newsletter}.
+        Route::get('/newsletters/target-count', [NewsletterAmController::class, 'getTargetCount']);
+        Route::get('/newsletters', [NewsletterAmController::class, 'index']);
+        Route::post('/newsletters', [NewsletterAmController::class, 'create']);
+        Route::get('/newsletters/{newsletter}/preview', [NewsletterAmController::class, 'preview']);
+        Route::post('/newsletters/{newsletter}/send', [NewsletterAmController::class, 'send']);
+        Route::delete('/newsletters/{newsletter}', [NewsletterAmController::class, 'destroy']);
     });
 });

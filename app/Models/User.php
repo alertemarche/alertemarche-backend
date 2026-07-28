@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -46,6 +47,12 @@ class User extends Authenticatable
     public function alerts(): HasMany
     {
         return $this->hasMany(Alert::class);
+    }
+
+    /** Secteurs explicitement rattachés (pivot user_sectors). */
+    public function sectorsPivot(): BelongsToMany
+    {
+        return $this->belongsToMany(Sector::class, 'user_sectors')->withTimestamps();
     }
 
     public function publishedNeeds(): HasMany
