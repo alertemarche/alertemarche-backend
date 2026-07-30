@@ -83,10 +83,10 @@ class TenderController extends Controller
             // c'est là que vivent les procédures de passation.
             $query->whereIn('type', ['public', 'aac', 'plan_passation']);
         } else {
-            // Sans filtre explicite : on renvoie TOUTES les catégories d'avis
-            // (opportunités actives + documents de planification), pour les 3 pays.
-            // Le frontend peut toujours restreindre via le paramètre `type`.
-            $query->whereIn('type', ['public', 'prive', 'aac', 'avis_general', 'plan_passation']);
+            // Sans filtre explicite : on retourne SEULEMENT les marchés actifs
+            // (public, privé, aac). Les documents de planification (plan_passation,
+            // avis_general) sont exclus par défaut et accessibles via ?type=plan_passation
+            $query->whereIn('type', ['public', 'prive', 'aac']);
         }
         if ($request->filled('sector')) {
             $query->whereJsonContains('sectors', (string) $request->string('sector'));
