@@ -18,6 +18,12 @@ class MatchingService
     /** Prestataires (et admin/ong) correspondant à un appel d'offres. */
     public function usersForTender(Tender $tender): Collection
     {
+        // Ne matche pas les tenders expirés (deadline dépassée).
+        // Les tenders sans deadline (null) restent matchables indéfiniment.
+        if ($tender->deadline !== null && $tender->deadline < now()) {
+            return collect([]);
+        }
+
         $sectors = (array) ($tender->sectors ?? []);
 
         return User::query()
