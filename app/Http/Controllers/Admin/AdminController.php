@@ -441,6 +441,85 @@ class AdminController extends Controller
     }
 
     /**
+     * Récupère les détails complets d'un utilisateur avec ses abonnements,
+     * alertes récentes et statistiques d'activité.
+     */
+    public function showUser(User $user): JsonResponse
+    {
+        $user->load([
+            'subscriptions' => fn ($q) => $q->latest()->limit(10),
+            'alerts' => fn ($q) => $q->latest()->limit(20),
+        ]);
+
+        $alertsStats = [
+            'total' => $user->alerts()->count(),
+            'sent' => $user->alerts()->where('status', 'sent')->count(),
+            'pending' => $user->alerts()->where('status', 'pending')->count(),
+            'failed' => $user->alerts()->where('status', 'failed')->count(),
+        ];
+
+        $active = $user->activeSubscription();
+
+        return response()->json([
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'organization' => $user->organization,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'profile_type' => $user->profile_type,
+                'primary_country' => $user->primary_country,
+                'sectors' => $user->sectors,
+                'keywords' => $user->keywords,
+                'is_admin' => (bool) $user->is_admin,
+                'is_suspended' => (bool) $user->is_suspended,
+                'email_verified_at' => $user->email_verified_at,
+                'created_at' => $user->created_at,
+                'updated_at' => $user->updated_at,
+            ],
+            'subscription' => $active ? [
+                'plan' => $active->plan,
+                'status' => $active->status,
+                'amount' => (int) $active->amount,
+                'started_at' => $active->started_at,
+                'expires_at' => $active->expires_at,
+                'payment_reference' => $active->payment_reference,
+            ] : null,
+            'subscriptions_history' => $user->subscriptions,
+            'alerts_stats' => $alertsStats,
+            'recent_alerts' => $user->alerts,
+        ]);
+    }
+
+    /**
+     * Modifie les informations d'un utilisateur (admin peut modifier tous les champs).
+     */
+    public function updateUser(Request $request, User $user): JsonResponse
+    {
+        if ($user->is_admin && !$request->user()->is_admin) {
+            return response()->json(['message' => 'Seul un admin peut modifier un compte admin.'], 403);
+        }
+
+        $data = $request->validate([
+            'name' => ['nullable', 'string', 'max:255'],
+            'organization' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email', 'unique:users,email,' . $user->id],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'profile_type' => ['nullable', 'string'],
+            'primary_country' => ['nullable', 'string', 'max:5'],
+            'sectors' => ['nullable', 'array'],
+            'keywords' => ['nullable', 'array'],
+        ]);
+
+        $user->update(array_filter($data, fn ($v) => $v !== null));
+
+        return response()->json([
+            'message' => 'Utilisateur modifié avec succès.',
+            'user' => $user->fresh(),
+        ]);
+    }
+
+    /**
      * Supprime définitivement un utilisateur (non-admin uniquement).
      * Annule ses abonnements actifs et révoque ses tokens.
      */
@@ -464,7 +543,10 @@ class AdminController extends Controller
      */
     public function toggleSuspend(Request $request, User $user): JsonResponse
     {
-        if ($user->is_admin) {
+        // On interdit uniquement la SUSPENSION d'un administrateur.
+        // La RÉACTIVATION d'un admin (déjà suspendu par erreur) reste toujours possible,
+        // sinon un compte admin suspendu resterait bloqué à jamais.
+        if ($user->is_admin && !$user->is_suspended) {
             return response()->json(['message' => 'Impossible de suspendre un administrateur.'], 403);
         }
         $user->update(['is_suspended' => !$user->is_suspended]);

@@ -106,7 +106,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/activity-calendar', [AdminController::class, 'activityCalendar']);
         // Utilisateurs
         Route::get('/users', [AdminController::class, 'users']);
+        Route::get('/users/{user}', [AdminController::class, 'showUser']);
         Route::post('/users', [AdminController::class, 'createUserManual']);
+        Route::patch('/users/{user}', [AdminController::class, 'updateUser']);
         Route::delete('/users/{user}', [AdminController::class, 'deleteUser']);
         Route::patch('/users/{user}/suspend', [AdminController::class, 'toggleSuspend']);
         // Abonnements
