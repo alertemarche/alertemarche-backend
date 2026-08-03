@@ -91,27 +91,15 @@ class AlertDispatcher
             $emailOk = $this->brevo->sendAlert($user->email, $user->name, $emailSubject, $emailBody);
         }
 
-        // WhatsApp (abonnés payants uniquement — jamais pour un teaser gratuit)
-        // Meta impose un modèle (template) approuvé pour les messages « à froid ».
+        // WhatsApp désactivé sur AlerteMarché : les alertes sont désormais
+        // envoyées uniquement par e-mail (abonnement e-mail).
         $waOk = false;
-        if (! $isFree && $user->whatsappEnabled() && $user->phone) {
-            if (! empty($waParams)) {
-                $waOk = $this->whatsapp->sendTemplate(
-                    $user->phone,
-                    (string) config('services.whatsapp.alert_template', 'alerte_opportunite'),
-                    (string) config('services.whatsapp.alert_template_lang', 'fr'),
-                    $waParams
-                );
-            } else {
-                $waOk = $this->whatsapp->sendText($user->phone, $message);
-            }
-        }
 
         $alert->update([
             'sent_email' => $emailOk,
             'sent_whatsapp' => $waOk,
             'sent_at' => now(),
-            'status' => ($emailOk || $waOk) ? 'sent' : 'failed',
+            'status' => $emailOk ? 'sent' : 'failed',
         ]);
 
         // Non-abonné : après l'unique alerte teaser, on suspend les envois.
@@ -140,7 +128,7 @@ class AlertDispatcher
         return "🔔 <strong>De nouveaux marchés correspondent à votre domaine !</strong><br><br>"
             ."{$prenom}, des appels d'offres et opportunités viennent d'être publiés dans votre secteur d'activité sur AlerteMarché.<br><br>"
             ."Pour <strong>consulter les détails</strong> (objet, institution, montant, date limite) et recevoir "
-            ."<strong>toutes vos alertes en temps réel</strong> par e-mail et WhatsApp, activez votre abonnement :<br><br>"
+            ."<strong>toutes vos alertes en temps réel</strong> par e-mail, activez votre abonnement :<br><br>"
             .'👉 <a href="'.$url.'" style="display:inline-block;background:#1a7f5a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;">Je m\'abonne pour accéder aux marchés</a><br><br>'
             ."Ne manquez plus aucune opportunité dans votre domaine.<br>"
             .'<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">— AlerteMarche.com</p>';
@@ -150,7 +138,7 @@ class AlertDispatcher
     {
         if ($user->email) {
             $body = "Vous avez utilisé vos 5 alertes gratuites. Abonnez-vous pour continuer à recevoir "
-                ."vos opportunités par WhatsApp et E-mail, sans limite.";
+                ."vos opportunités par e-mail, sans limite.";
             $this->brevo->sendAlert($user->email, $user->name, 'Vos alertes gratuites sont épuisées — AlerteMarché', $body);
         }
     }
