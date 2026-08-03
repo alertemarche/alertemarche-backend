@@ -11,6 +11,7 @@ use App\Services\WhatsAppService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
@@ -76,12 +77,21 @@ class AuthController extends Controller
             'notify_whatsapp' => $data['notify_whatsapp'] ?? false,
         ]);
 
-        // OTP de vérification
-        $this->issueOtp($user);
+        // OTP de vérification + e-mail de bienvenue.
+        // Défensif : un échec d'envoi/rendu d'e-mail ne doit JAMAIS faire échouer
+        // l'inscription (sinon 500 côté client alors que le compte est bien créé).
+        try {
+            $this->issueOtp($user);
+        } catch (\Throwable $e) {
+            Log::error('Échec envoi OTP inscription', ['user' => $user->id, 'error' => $e->getMessage()]);
+        }
 
-        // Email de bienvenue (freemium)
         if ($user->email) {
-            $this->brevo->sendWelcome($user->email, $user->name, $user->profile_type);
+            try {
+                $this->brevo->sendWelcome($user->email, $user->name, $user->profile_type);
+            } catch (\Throwable $e) {
+                Log::error('Échec envoi e-mail bienvenue', ['user' => $user->id, 'error' => $e->getMessage()]);
+            }
         }
 
         $token = $user->createToken('api')->plainTextToken;
