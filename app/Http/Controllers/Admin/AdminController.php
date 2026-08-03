@@ -236,7 +236,7 @@ class AdminController extends Controller
     {
         $query = User::query()
             ->with(['subscriptions' => fn ($q) => $q->latest()])
-            ->withCount('alerts')
+            ->withCount(['alerts as alerts_count' => fn ($q) => $q->where('status', 'sent')])
             ->latest();
 
         if ($request->filled('profile_type')) {
