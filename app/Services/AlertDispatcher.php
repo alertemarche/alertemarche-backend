@@ -65,12 +65,21 @@ class AlertDispatcher
     {
         $isFree = ! $user->hasActiveSubscription();
 
+        // Contenu de l'e-mail :
+        //  - Abonné payant -> détails complets de l'opportunité.
+        //  - Non-abonné    -> UNE alerte « teaser » (sans détails) invitant à s'abonner
+        //                     pour accéder aux marchés de son domaine.
+        $emailBody = $isFree ? $this->teaserMessage($user) : $message;
+        $emailSubject = $isFree
+            ? '🔔 De nouveaux marchés dans votre domaine — AlerteMarché'
+            : 'Nouvelle opportunité — AlerteMarché';
+
         $alert = Alert::create([
             'user_id' => $user->id,
             'source_type' => $type,
             'source_id' => $sourceId,
             'title' => $title,
-            'message' => $message,
+            'message' => $emailBody,
             'relevance_score' => $score,
             'is_free' => $isFree,
             'status' => 'queued',
@@ -79,13 +88,13 @@ class AlertDispatcher
         // E-mail (tous les profils)
         $emailOk = false;
         if ($user->notify_email && $user->email) {
-            $emailOk = $this->brevo->sendAlert($user->email, $user->name, 'Nouvelle opportunité — AlerteMarché', $message);
+            $emailOk = $this->brevo->sendAlert($user->email, $user->name, $emailSubject, $emailBody);
         }
 
-        // WhatsApp (abonnés payants uniquement)
+        // WhatsApp (abonnés payants uniquement — jamais pour un teaser gratuit)
         // Meta impose un modèle (template) approuvé pour les messages « à froid ».
         $waOk = false;
-        if ($user->whatsappEnabled() && $user->phone) {
+        if (! $isFree && $user->whatsappEnabled() && $user->phone) {
             if (! empty($waParams)) {
                 $waOk = $this->whatsapp->sendTemplate(
                     $user->phone,
@@ -105,16 +114,36 @@ class AlertDispatcher
             'status' => ($emailOk || $waOk) ? 'sent' : 'failed',
         ]);
 
-        // Décompte du quota freemium + suspension éventuelle
+        // Non-abonné : après l'unique alerte teaser, on suspend les envois.
+        // Le teaser contient déjà l'appel à s'abonner : inutile d'envoyer en plus
+        // un e-mail « alertes épuisées ».
         if ($isFree) {
             $user->increment('free_alerts_used');
             if ($user->fresh()->freeAlertsRemaining() <= 0) {
                 $user->update(['is_suspended' => true]);
-                $this->sendFreemiumExhausted($user);
             }
         }
 
         return $alert;
+    }
+
+    /**
+     * Message « teaser » envoyé UNE seule fois à un non-abonné : il l'informe que des
+     * marchés correspondent à son domaine, sans en révéler les détails, et l'invite
+     * à s'abonner pour y accéder.
+     */
+    protected function teaserMessage(User $user): string
+    {
+        $url = 'https://alertemarche.com/tarifs.html';
+        $prenom = $user->name ? explode(' ', trim($user->name))[0] : 'Bonjour';
+
+        return "🔔 <strong>De nouveaux marchés correspondent à votre domaine !</strong><br><br>"
+            ."{$prenom}, des appels d'offres et opportunités viennent d'être publiés dans votre secteur d'activité sur AlerteMarché.<br><br>"
+            ."Pour <strong>consulter les détails</strong> (objet, institution, montant, date limite) et recevoir "
+            ."<strong>toutes vos alertes en temps réel</strong> par e-mail et WhatsApp, activez votre abonnement :<br><br>"
+            .'👉 <a href="'.$url.'" style="display:inline-block;background:#1a7f5a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;">Je m\'abonne pour accéder aux marchés</a><br><br>'
+            ."Ne manquez plus aucune opportunité dans votre domaine.<br>"
+            .'<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">— AlerteMarche.com</p>';
     }
 
     protected function sendFreemiumExhausted(User $user): void
