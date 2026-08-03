@@ -146,7 +146,7 @@ class AlertDispatcher
     /** Format message WhatsApp/Email — Appel d'offres public (cahier des charges 5.2). */
     public function formatTenderMessage(Tender $tender): string
     {
-        $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire"][$tender->country] ?? $tender->country;
+        $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire", 'SN' => 'Sénégal'][$tender->country] ?? $tender->country;
 
         // Génère du HTML pour l'email (les \n sont convertis en <br> via nl2br, mais on ajoute aussi du HTML pour le lien)
         $message = "🔔 <strong>Nouvelle opportunité — AlerteMarché</strong><br><br>"
@@ -169,7 +169,7 @@ class AlertDispatcher
     /** Format message WhatsApp/Email — Besoin Artisan (cahier des charges 5.3). */
     public function formatNeedMessage(ArtisanNeed $need): string
     {
-        $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire"][$need->country] ?? $need->country;
+        $pays = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire", 'SN' => 'Sénégal'][$need->country] ?? $need->country;
         $loc = $need->locality.($need->region ? ", {$need->region}" : '')." — {$pays}";
 
         $message = "🔔 <strong>Nouvelle opportunité — AlerteMarché</strong><br><br>"

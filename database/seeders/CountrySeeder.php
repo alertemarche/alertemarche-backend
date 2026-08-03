@@ -13,6 +13,7 @@ class CountrySeeder extends Seeder
             ['code' => 'BJ', 'name' => 'Bénin', 'flag_emoji' => '🇧🇯'],
             ['code' => 'TG', 'name' => 'Togo', 'flag_emoji' => '🇹🇬'],
             ['code' => 'CI', 'name' => "Côte d'Ivoire", 'flag_emoji' => '🇨🇮'],
+            ['code' => 'SN', 'name' => 'Sénégal', 'flag_emoji' => '🇸🇳'],
         ];
 
         foreach ($countries as $c) {
