@@ -16,28 +16,28 @@ return [
     'plans' => [
         'mensuel' => [
             'label' => 'Mensuel',
-            'amount' => 10000,
+            'amount' => 29500,
             'duration_months' => 1,
             'discount' => 0,
             'period_label' => '/ mois',
         ],
         'trimestriel' => [
             'label' => 'Trimestriel',
-            'amount' => 25000,
+            'amount' => 73750,
             'duration_months' => 3,
             'discount' => 17,
             'period_label' => '/ 3 mois',
         ],
         'semestriel' => [
             'label' => 'Semestriel',
-            'amount' => 45000,
+            'amount' => 132750,
             'duration_months' => 6,
             'discount' => 25,
             'period_label' => '/ 6 mois',
         ],
         'annuel' => [
             'label' => 'Annuel',
-            'amount' => 90000,
+            'amount' => 265500,
             'duration_months' => 12,
             'discount' => 25,
             'period_label' => '/ an',

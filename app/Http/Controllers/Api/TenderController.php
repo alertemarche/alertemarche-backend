@@ -152,9 +152,43 @@ class TenderController extends Controller
         $tender->setAttribute('reference', null);
         $tender->setAttribute('source_url', null);
         $tender->setAttribute('dao_url', null);
+
+        // Masque l'identité de l'acheteur pour empêcher un visiteur non abonné
+        // de retrouver l'avis directement sur le portail officiel.
+        $tender->setAttribute('institution', null);
+        $tender->setAttribute('external_id', null);
+        $tender->setAttribute('ai_summary', null);
+
+        // Le nom de l'acheteur figure souvent dans le titre lui-même
+        // (« … au profit de la Police républicaine »). On coupe ce suffixe tout
+        // en conservant l'objet du marché (utile pour le référencement).
+        $teaser = $this->teaserTitle((string) $tender->getAttribute('title'));
+        $tender->setAttribute('title', $teaser);
+        $tender->setAttribute('title_fr', $teaser);
+        $tender->setAttribute('title_original', null);
+
         $tender->setAttribute('is_locked', true);
 
         return $tender;
+    }
+
+    /**
+     * Retire d'un titre le nom de l'acheteur (visiteurs non abonnés).
+     *
+     * On coupe le titre au niveau des connecteurs qui introduisent
+     * l'institution (« au profit de … », « pour le compte de … », etc.) et on
+     * remplace la partie masquée par « … » : l'objet du marché reste lisible.
+     */
+    protected function teaserTitle(string $title): string
+    {
+        if ($title === '') {
+            return $title;
+        }
+
+        $pattern = '/\s+(au profit d|pour le compte d|au b[ée]n[ée]fice d|au b[ée]n[ée]fice du|pour le minist[èe]re|au sein d|de la part d|en faveur d|pour l\'acquisition au profit).*$/iu';
+        $teaser = preg_replace($pattern, ' …', $title);
+
+        return is_string($teaser) && $teaser !== '' ? $teaser : $title;
     }
 
     /** Remplace le titre affiché par sa traduction française si disponible. */
