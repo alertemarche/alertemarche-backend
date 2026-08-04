@@ -36,13 +36,6 @@ return [
             'discount' => 17,
             'period_label' => '/ 3 mois',
         ],
-        'semestriel' => [
-            'label' => 'Semestriel',
-            'amount' => 79650,
-            'duration_months' => 6,
-            'discount' => 25,
-            'period_label' => '/ 6 mois',
-        ],
         'annuel' => [
             'label' => 'Annuel',
             'amount' => 159300,
