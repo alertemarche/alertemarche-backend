@@ -17,7 +17,8 @@ return [
         'hebdomadaire' => [
             'label' => 'Hebdomadaire',
             'amount' => 5000,
-            'duration_months' => 0.25,  // ~1 semaine = 7 jours
+            'duration_months' => 0.25,  // ~1 semaine (pour affichage)
+            'duration_days' => 7,       // Durée exacte en jours (prioritaire pour calcul)
             'discount' => 0,
             'period_label' => '/ semaine',
         ],

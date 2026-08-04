@@ -61,10 +61,19 @@ class SubscriptionController extends Controller
     {
         abort_unless($subscription->user_id === $request->user()->id, 403);
 
+        // Récupère la config du plan pour obtenir la durée exacte
+        $planConfig = config('plans.plans.' . $subscription->plan, []);
+        
+        // Priorité : duration_days (ex: hebdomadaire = 7 jours)
+        // Sinon : duration_months converti en mois (minimum 1 mois)
+        $expiresAt = isset($planConfig['duration_days']) && $planConfig['duration_days'] > 0
+            ? now()->addDays((int) $planConfig['duration_days'])
+            : now()->addMonths(max(1, (int) $subscription->duration_months));
+
         $subscription->update([
             'status' => 'active',
             'started_at' => now(),
-            'expires_at' => now()->addMonths(max(1, (int) $subscription->duration_months)),
+            'expires_at' => $expiresAt,
         ]);
 
         // WhatsApp devient disponible pour un abonné payant

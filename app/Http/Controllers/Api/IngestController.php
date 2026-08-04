@@ -49,6 +49,9 @@ class IngestController extends Controller
 
             $attributes = [
                 'title' => $item['title'],
+                // Teaser calculé dès le scraping : objet conservé, acheteur masqué
+                // en fin. Recalculé après la traduction FR par ProcessTenderJob.
+                'teaser_title' => Tender::teaserTitle($item['title']),
                 'institution' => $item['institution'],
                 'reference' => $item['reference'] ?? null,
                 'location' => $item['location'] ?? null,

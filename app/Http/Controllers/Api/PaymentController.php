@@ -136,11 +136,20 @@ class PaymentController extends Controller
     /** Active un abonnement et débloque WhatsApp pour l'utilisateur. */
     protected function activateSubscription(Subscription $subscription, string $reference): void
     {
+        // Récupère la config du plan pour obtenir la durée exacte
+        $planConfig = config('plans.plans.' . $subscription->plan, []);
+        
+        // Priorité : duration_days (ex: hebdomadaire = 7 jours)
+        // Sinon : duration_months converti en mois (minimum 1 mois)
+        $expiresAt = isset($planConfig['duration_days']) && $planConfig['duration_days'] > 0
+            ? now()->addDays((int) $planConfig['duration_days'])
+            : now()->addMonths(max(1, (int) $subscription->duration_months));
+
         $subscription->update([
             'status' => 'active',
             'payment_reference' => $reference,
             'started_at' => now(),
-            'expires_at' => now()->addMonths(max(1, (int) $subscription->duration_months)),
+            'expires_at' => $expiresAt,
         ]);
 
         $subscription->user->update(['notify_whatsapp' => true, 'is_suspended' => false]);

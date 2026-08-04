@@ -72,9 +72,12 @@ class ProcessTenderJob implements ShouldQueue
         ]);
 
         $titleFr = trim((string) ($result['title_fr'] ?? ''));
+        $displayTitle = $titleFr !== '' ? $titleFr : $tender->title;
 
         $tender->update([
-            'title_fr' => $titleFr !== '' ? $titleFr : $tender->title,
+            'title_fr' => $displayTitle,
+            // Recalcule le teaser sur le titre FR affiché (masque l'acheteur en fin).
+            'teaser_title' => Tender::teaserTitle($displayTitle),
             'ai_summary' => $result['summary'] ?? null,
             'sectors' => $result['sectors'] ?? [],
             'ai_processed' => true,
@@ -106,6 +109,7 @@ class ProcessTenderJob implements ShouldQueue
 
         $tender->update([
             'title_fr' => $tender->title,
+            'teaser_title' => Tender::teaserTitle($tender->title),
             'ai_summary' => $summary,
             'sectors' => $sectors,
             'ai_processed' => true,
