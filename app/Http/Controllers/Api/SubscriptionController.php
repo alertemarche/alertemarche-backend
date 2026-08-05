@@ -15,7 +15,14 @@ class SubscriptionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json($request->user()->subscriptions()->latest()->get());
+        // N'affiche pas les abonnements annulés dans l'interface (restent en base pour l'historique)
+        return response()->json(
+            $request->user()
+                ->subscriptions()
+                ->where('status', '!=', 'cancelled')
+                ->latest()
+                ->get()
+        );
     }
 
     /**
