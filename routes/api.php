@@ -114,6 +114,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Abonnements
         Route::get('/subscriptions', [AdminController::class, 'subscriptions']);
         Route::post('/subscriptions/grant', [AdminController::class, 'grantSubscription']);
+        Route::delete('/subscriptions/{subscription}', [AdminController::class, 'deleteSubscription']);
         // Paiements
         Route::get('/payments', [AdminController::class, 'payments']);
         // Annonces

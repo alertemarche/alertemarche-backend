@@ -650,6 +650,26 @@ class AdminController extends Controller
     }
 
     /**
+     * Supprime définitivement un abonnement/transaction (nettoyage manuel
+     * des doublons ou tentatives annulées depuis le back-office).
+     * Sécurité : on refuse la suppression d'un abonnement ACTIF pour éviter
+     * de retirer par erreur l'accès d'un client qui paie. Il faut d'abord
+     * l'annuler si l'on souhaite réellement le supprimer.
+     */
+    public function deleteSubscription(Subscription $subscription): JsonResponse
+    {
+        if ($subscription->status === 'active') {
+            return response()->json([
+                'message' => 'Impossible de supprimer un abonnement actif. Annulez-le d\'abord.',
+            ], 422);
+        }
+
+        $subscription->delete();
+
+        return response()->json(['message' => 'Transaction supprimée définitivement.']);
+    }
+
+    /**
      * Liste de tous les paiements / transactions (abonnements avec référence de paiement).
      * Distingue les paiements réels (KKiaPay) des créations manuelles par l'admin.
      */
