@@ -26,8 +26,8 @@ use App\Services\BrevoService;
 
 $DRY_RUN = in_array('--dry-run', $argv, true);
 
-// Lien de reprise : connexion PUIS redirection automatique vers l'abonnement.
-$CTA_URL = 'https://alertemarche.com/connexion?redirect=tarifs';
+// Lien de reprise : connexion PUIS redirection automatique vers page d'incitation → abonnement.
+$CTA_URL = 'https://alertemarche.com/connexion?redirect=offre-speciale';
 
 $brevo = app(BrevoService::class);
 
