@@ -40,7 +40,10 @@ class SubscriptionController extends Controller
         $subscription = Subscription::create([
             'user_id' => $request->user()->id,
             'plan' => $data['plan'],
-            'duration_months' => $plan['duration_months'],
+            // La colonne duration_months est un entier. Pour les formules < 1 mois
+            // (ex: hebdomadaire = 0.25), on stocke l'entier : la durée exacte est
+            // gouvernée par duration_days (7 j) lors de l'activation.
+            'duration_months' => (int) round($plan['duration_months']),
             'amount' => $plan['amount'],
             'base_price' => $plan['amount'],
             'country_count' => 1,
