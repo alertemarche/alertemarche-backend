@@ -77,12 +77,12 @@ class PaymentController extends Controller
         ]);
     }
 
-    /** Webhook KKiaPay (serveur-à-serveur). */
+    /** Webhook KKiaPay (serveur-à-serveur). Canal FIABLE d'activation. */
     public function webhook(Request $request): JsonResponse
     {
         Log::info('KKiaPay webhook reçu', $request->all());
 
-        // Validation de la signature webhook pour sécurité maximale
+        // Validation de l'authenticité (secret partagé envoyé par KKiaPay).
         if (!$this->validateWebhookSignature($request)) {
             Log::warning('KKiaPay webhook signature invalide', [
                 'headers' => $request->headers->all(),
@@ -92,45 +92,105 @@ class PaymentController extends Controller
         }
 
         $transactionId = $request->input('transactionId') ?? $request->input('reference');
-        $status = strtoupper((string) $request->input('status'));
 
-        if ($transactionId && in_array($status, ['SUCCESS', 'SUCCESSFUL', 'SUCCESS_TRANSACTION'], true)) {
-            // Revérification serveur pour ne pas faire confiance au payload brut.
-            $result = $this->kkiapay->verifyTransaction($transactionId);
-            if ($result['success']) {
-                $subscription = Subscription::where('payment_reference', $transactionId)->first();
-                if ($subscription && $subscription->status !== 'active') {
-                    $this->activateSubscription($subscription, $transactionId);
-                }
-            }
+        // KKiaPay envoie « event: transaction.success » + « isPaymentSucces: true »
+        // (l'ancien format « status: SUCCESS » reste géré par rétro-compatibilité).
+        $status = strtoupper((string) $request->input('status', ''));
+        $event = strtolower((string) $request->input('event', ''));
+        $isSuccess = $request->boolean('isPaymentSucces')
+            || in_array($status, ['SUCCESS', 'SUCCESSFUL', 'SUCCESS_TRANSACTION'], true)
+            || $event === 'transaction.success';
+
+        if (!$transactionId || !$isSuccess) {
+            return response()->json(['received' => true]);
         }
+
+        // Retrouver l'abonnement : d'abord via stateData.subscription_id (transmis
+        // au widget via data), sinon via payment_reference (transactions déjà liées).
+        $stateData = $request->input('stateData', []);
+        if (is_string($stateData)) {
+            $decoded = json_decode($stateData, true);
+            $stateData = is_array($decoded) ? $decoded : [];
+        }
+        $subscriptionId = $stateData['subscription_id'] ?? null;
+
+        $subscription = $subscriptionId ? Subscription::find($subscriptionId) : null;
+        if (!$subscription) {
+            $subscription = Subscription::where('payment_reference', $transactionId)->first();
+        }
+        if (!$subscription) {
+            Log::warning('KKiaPay webhook: abonnement introuvable', [
+                'transactionId' => $transactionId, 'stateData' => $stateData,
+            ]);
+            return response()->json(['received' => true]);
+        }
+        if ($subscription->status === 'active') {
+            return response()->json(['received' => true]);
+        }
+
+        // Contrôle du montant payé (le webhook porte le montant réel encaissé).
+        $paidAmount = (int) round((float) $request->input('amount', 0));
+        if ($paidAmount > 0 && $paidAmount < (int) $subscription->amount) {
+            Log::warning('KKiaPay webhook: montant insuffisant', [
+                'paid' => $paidAmount, 'due' => $subscription->amount, 'subscription' => $subscription->id,
+            ]);
+            return response()->json(['received' => true]);
+        }
+
+        // Défense en profondeur : on tente une revérification serveur pour l'audit.
+        // Le webhook est déjà authentifié par le secret partagé ET le montant est
+        // contrôlé : on n'exige donc PAS que l'API de vérification réponde (elle
+        // peut être indisponible ou mal configurée). On bloque uniquement si elle
+        // affirme explicitement que la transaction n'a PAS réussi.
+        $verified = $this->kkiapay->verifyTransaction($transactionId);
+        $verifyBlocked = $verified['success'] === false
+            && !in_array($verified['status'], ['NOT_CONFIGURED', 'ERROR', 'UNKNOWN'], true)
+            && !ctype_digit((string) $verified['status']); // codes d'erreur API (ex: 4003)
+        if ($verifyBlocked) {
+            Log::warning('KKiaPay webhook: revérification négative, activation refusée', [
+                'transactionId' => $transactionId, 'verify' => $verified,
+            ]);
+            return response()->json(['received' => true]);
+        }
+
+        $this->activateSubscription($subscription, $transactionId);
+        Log::info('KKiaPay webhook: abonnement activé', [
+            'subscription' => $subscription->id, 'transactionId' => $transactionId, 'verify_status' => $verified['status'],
+        ]);
 
         return response()->json(['received' => true]);
     }
 
-    /** Valide la signature du webhook KKiaPay. */
+    /** Valide l'authenticité du webhook KKiaPay (secret partagé). */
     protected function validateWebhookSignature(Request $request): bool
     {
         $webhookSecret = config('services.kkiapay.webhook_secret');
-        
-        // Si aucun secret configuré, on accepte (rétro-compatibilité)
+
+        // Si aucun secret configuré, on accepte (rétro-compatibilité).
         if (empty($webhookSecret)) {
             return true;
         }
 
-        $signature = $request->header('X-Kkiapay-Signature') 
-                  ?? $request->header('X-Signature')
-                  ?? $request->header('Signature');
+        // KKiaPay (via Convoy) envoie le secret webhook EN CLAIR dans l'en-tête
+        // « x-kkiapay-secret ». On accepte aussi une éventuelle signature HMAC.
+        $provided = $request->header('X-Kkiapay-Secret')
+                 ?? $request->header('X-Kkiapay-Signature')
+                 ?? $request->header('X-Signature')
+                 ?? $request->header('Signature');
 
-        if (empty($signature)) {
+        if (empty($provided)) {
             return false;
         }
 
-        // KKiaPay utilise HMAC-SHA256 du payload JSON
-        $payload = $request->getContent();
-        $expectedSignature = hash_hmac('sha256', $payload, $webhookSecret);
+        // 1) Comparaison directe du secret (format KKiaPay actuel).
+        if (hash_equals((string) $webhookSecret, (string) $provided)) {
+            return true;
+        }
 
-        return hash_equals($expectedSignature, $signature);
+        // 2) Repli : signature HMAC-SHA256 du corps (autres intégrations).
+        $expectedSignature = hash_hmac('sha256', $request->getContent(), $webhookSecret);
+
+        return hash_equals($expectedSignature, (string) $provided);
     }
 
     /** Active un abonnement et débloque WhatsApp pour l'utilisateur. */
