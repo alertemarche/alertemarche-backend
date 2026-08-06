@@ -4,7 +4,7 @@
 ![PHP](https://img.shields.io/badge/PHP-8.2%2B-777BB4?logo=php&logoColor=white)
 ![Laravel](https://img.shields.io/badge/Laravel-11-FF2D20?logo=laravel&logoColor=white)
 
-API REST **Laravel 11** de la plateforme SaaS **AlerteMarché** — veille intelligente des appels d'offres au **Bénin**, **Togo** et **Côte d'Ivoire**.
+API REST **Laravel 11** de la plateforme SaaS **AlerteMarché** — veille intelligente des appels d'offres au **Bénin**, **Togo**, **Côte d'Ivoire** et **Sénégal**.
 
 ## Fonctionnalités
 
