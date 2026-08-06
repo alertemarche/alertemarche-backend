@@ -2,7 +2,7 @@
 
 return [
     // Pays couverts
-    'countries' => ['BJ', 'TG', 'CI', 'SN'],
+    'countries' => ['BJ', 'TG', 'CI', 'SN', 'BF'],
 
     // Tarifs de base (FCFA / mois / pays) — tarif normal
     'prices' => [

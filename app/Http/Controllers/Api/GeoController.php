@@ -15,8 +15,8 @@ class GeoController extends Controller
     public function detect(Request $request): JsonResponse
     {
         $code = $this->geo->countryFromIp($request->ip());
-        $names = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire", 'SN' => 'Sénégal'];
-        $flags = ['BJ' => '🇧🇯', 'TG' => '🇹🇬', 'CI' => '🇨🇮', 'SN' => '🇸🇳'];
+        $names = ['BJ' => 'Bénin', 'TG' => 'Togo', 'CI' => "Côte d'Ivoire", 'SN' => 'Sénégal', 'BF' => 'Burkina Faso'];
+        $flags = ['BJ' => '🇧🇯', 'TG' => '🇹🇬', 'CI' => '🇨🇮', 'SN' => '🇸🇳', 'BF' => '🇧🇫'];
 
         return response()->json([
             'country_code' => $code,
