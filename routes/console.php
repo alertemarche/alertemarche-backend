@@ -2,6 +2,7 @@
 
 use App\Jobs\ProcessTenderJob;
 use App\Jobs\PurgeExpiredTenders;
+use App\Models\Subscription;
 use App\Models\Tender;
 use Illuminate\Support\Facades\Schedule;
 
@@ -16,3 +17,9 @@ Schedule::job(new PurgeExpiredTenders())
     ->daily()
     ->name('purge-expired-tenders')
     ->withoutOverlapping();
+
+// Suppression automatique quotidienne des abonnements annulés (statut « cancelled »).
+// Ils ne servent plus à rien une fois annulés : on les retire définitivement de la base.
+Schedule::call(function () {
+    Subscription::where('status', 'cancelled')->delete();
+})->daily()->name('purge-cancelled-subscriptions')->withoutOverlapping();
