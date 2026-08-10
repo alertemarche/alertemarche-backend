@@ -63,16 +63,12 @@ class AlertDispatcher
      */
     protected function deliver(User $user, string $type, int $sourceId, string $title, string $message, float $score, ?array $waParams = null): Alert
     {
+        // Site 100% GRATUIT : TOUT LE MONDE reçoit le détail complet de
+        // l'opportunité par e-mail (plus de « teaser »). Le plafond de 5 alertes
+        // par jour est appliqué en amont via User::canReceiveAlert().
         $isFree = ! $user->hasActiveSubscription();
-
-        // Contenu de l'e-mail :
-        //  - Abonné payant -> détails complets de l'opportunité.
-        //  - Non-abonné    -> UNE alerte « teaser » (sans détails) invitant à s'abonner
-        //                     pour accéder aux marchés de son domaine.
-        $emailBody = $isFree ? $this->teaserMessage($user) : $message;
-        $emailSubject = $isFree
-            ? '🔔 De nouveaux marchés dans votre domaine — AlerteMarché'
-            : 'Nouvelle opportunité — AlerteMarché';
+        $emailBody = $message;
+        $emailSubject = 'Nouvelle opportunité — AlerteMarché';
 
         $alert = Alert::create([
             'user_id' => $user->id,
@@ -102,14 +98,11 @@ class AlertDispatcher
             'status' => $emailOk ? 'sent' : 'failed',
         ]);
 
-        // Non-abonné : après l'unique alerte teaser, on suspend les envois.
-        // Le teaser contient déjà l'appel à s'abonner : inutile d'envoyer en plus
-        // un e-mail « alertes épuisées ».
+        // Modèle gratuit : plus de suspension ni de quota « à vie ». Le plafond
+        // quotidien (5/jour) est géré par User::canReceiveAlert() et se remet à
+        // zéro chaque jour. On conserve le compteur historique à titre indicatif.
         if ($isFree) {
             $user->increment('free_alerts_used');
-            if ($user->fresh()->freeAlertsRemaining() <= 0) {
-                $user->update(['is_suspended' => true]);
-            }
         }
 
         return $alert;

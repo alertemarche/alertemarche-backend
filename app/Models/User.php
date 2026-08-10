@@ -75,21 +75,30 @@ class User extends Authenticatable
         return $this->activeSubscription() !== null;
     }
 
-    /** Quota freemium restant. */
-    public function freeAlertsRemaining(): int
+    /** Nombre d'alertes déjà envoyées à cet utilisateur aujourd'hui. */
+    public function alertsSentToday(): int
     {
-        $quota = (int) config('alertemarche.freemium_alerts', 5);
-
-        return max(0, $quota - (int) $this->free_alerts_used);
+        return (int) $this->alerts()
+            ->whereDate('created_at', now()->toDateString())
+            ->count();
     }
 
-    /** L'utilisateur peut-il recevoir une nouvelle alerte ? */
+    /**
+     * Quota d'alertes restant pour la journée en cours.
+     * Modèle GRATUIT : tout le monde reçoit jusqu'à N alertes de marchés
+     * actifs par jour par e-mail (N = alertemarche.daily_alerts, défaut 5).
+     */
+    public function freeAlertsRemaining(): int
+    {
+        $quota = (int) config('alertemarche.daily_alerts', 5);
+
+        return max(0, $quota - $this->alertsSentToday());
+    }
+
+    /** L'utilisateur peut-il recevoir une nouvelle alerte aujourd'hui ? */
     public function canReceiveAlert(): bool
     {
-        if ($this->hasActiveSubscription()) {
-            return true;
-        }
-
+        // Plafond quotidien appliqué à TOUT LE MONDE (site 100% gratuit).
         return $this->freeAlertsRemaining() > 0;
     }
 

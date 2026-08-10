@@ -16,7 +16,7 @@ class ProfileController extends Controller
             'name' => ['nullable', 'string', 'max:255'],
             'organization' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($request->user()->id)],
-            'sectors' => ['nullable', 'array'],
+            'sectors' => ['nullable', 'array', 'max:' . config('alertemarche.max_sectors', 3)],
             'sectors.*' => ['string', 'max:80'],
             'keywords' => ['nullable', 'array'],
             'keywords.*' => ['string', 'max:60'],

@@ -129,9 +129,11 @@ class TenderController extends Controller
      */
     protected function userHasAccess(): bool
     {
-        $user = auth('sanctum')->user();
-
-        return $user !== null && $user->hasActiveSubscription();
+        // AlerteMarché est actuellement 100% GRATUIT : tous les marchés sont
+        // déverrouillés pour tout le monde (visiteurs et inscrits). Le paywall
+        // est neutralisé mais la logique (applyPaywall) est conservée pour une
+        // éventuelle réactivation ultérieure de l'abonnement payant.
+        return true;
     }
 
     /**

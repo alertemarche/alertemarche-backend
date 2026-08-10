@@ -32,7 +32,7 @@ class AuthController extends Controller
             'password' => ['nullable', 'string', 'min:8'],
             'profile_type' => ['required', Rule::in(User::PROFILES)],
             'primary_country' => ['nullable', 'string', 'size:2'],
-            'sectors' => ['nullable', 'array'],
+            'sectors' => ['nullable', 'array', 'max:' . config('alertemarche.max_sectors', 3)],
             'sectors.*' => ['string', 'max:80'],
             'keywords' => ['nullable', 'array'],
             'keywords.*' => ['string', 'max:60'],
