@@ -131,7 +131,22 @@ class TenderController extends Controller
     {
         // Si l'utilisateur est authentifié (a un compte gratuit) → déverrouillé
         // Si visiteur anonyme → verrouillé (flouté)
-        return auth('sanctum')->check();
+        // On teste d'abord le guard sanctum, puis on vérifie si un token est présent
+        if (auth('sanctum')->check()) {
+            return true;
+        }
+
+        // Fallback : vérifier manuellement si un bearer token valide est présent
+        if ($token = request()->bearerToken()) {
+            try {
+                $accessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+                return $accessToken && $accessToken->tokenable;
+            } catch (\Exception $e) {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     /**
