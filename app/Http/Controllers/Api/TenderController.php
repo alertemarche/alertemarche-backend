@@ -123,17 +123,15 @@ class TenderController extends Controller
 
     /**
      * Détermine si l'utilisateur courant a accès aux données complètes.
-     * Vrai uniquement pour un utilisateur authentifié disposant d'un
-     * abonnement payant actif. Les visiteurs anonymes et les inscrits sans
-     * abonnement (plan gratuit) reçoivent des avis « verrouillés ».
+     * AlerteMarché est 100% GRATUIT pour les inscrits, mais les visiteurs
+     * anonymes reçoivent des avis « verrouillés » (floutés) pour les inciter
+     * à créer un compte gratuit.
      */
     protected function userHasAccess(): bool
     {
-        // AlerteMarché est actuellement 100% GRATUIT : tous les marchés sont
-        // déverrouillés pour tout le monde (visiteurs et inscrits). Le paywall
-        // est neutralisé mais la logique (applyPaywall) est conservée pour une
-        // éventuelle réactivation ultérieure de l'abonnement payant.
-        return true;
+        // Si l'utilisateur est authentifié (a un compte gratuit) → déverrouillé
+        // Si visiteur anonyme → verrouillé (flouté)
+        return auth('sanctum')->check();
     }
 
     /**
