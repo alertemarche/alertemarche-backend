@@ -112,6 +112,7 @@ class AuthController extends Controller
         $channel = $user->email ? 'email' : 'whatsapp';
         $code = (string) random_int(100000, 999999);
 
+        // 1. Créer le code OTP en base de données (jamais bloquant)
         OtpCode::create([
             'identifier' => $identifier,
             'channel' => $channel,
@@ -119,11 +120,18 @@ class AuthController extends Controller
             'expires_at' => now()->addMinutes(10),
         ]);
 
+        // 2. Envoyer le code (défensif : un échec d'envoi ne doit pas faire échouer)
         $msg = "Votre code de vérification AlerteMarché est : {$code} (valable 10 minutes).";
-        if ($channel === 'whatsapp') {
-            $this->whatsapp->sendText($user->phone, $msg);
-        } elseif ($user->email) {
-            $this->brevo->sendAlert($user->email, $user->name, 'Code de vérification — AlerteMarché', $msg);
+        try {
+            if ($channel === 'whatsapp') {
+                $this->whatsapp->sendText($user->phone, $msg);
+            } elseif ($user->email) {
+                $this->brevo->sendAlert($user->email, $user->name, 'Code de vérification — AlerteMarché', $msg);
+            }
+        } catch (\Throwable $e) {
+            // Log l'erreur mais ne remonte pas : le code existe en DB, l'utilisateur
+            // peut réessayer le renvoi ou contacter le support.
+            Log::error('Échec envoi OTP', ['identifier' => $identifier, 'channel' => $channel, 'error' => $e->getMessage()]);
         }
     }
 
@@ -132,7 +140,16 @@ class AuthController extends Controller
     {
         $request->validate(['identifier' => ['required', 'string']]);
         $user = User::where('email', $request->identifier)->orWhere('phone', $request->identifier)->firstOrFail();
-        $this->issueOtp($user);
+        
+        // Envoi défensif : un échec Brevo/WhatsApp ne doit pas empêcher le renvoi.
+        // Le code OTP est toujours créé en DB (issueOtp crée d'abord, puis envoie).
+        try {
+            $this->issueOtp($user);
+        } catch (\Throwable $e) {
+            Log::error('Échec renvoi OTP', ['user' => $user->id, 'identifier' => $request->identifier, 'error' => $e->getMessage()]);
+            // On retourne quand même un succès : le code existe en DB, l'utilisateur
+            // peut réessayer ou utiliser un code précédent encore valide.
+        }
 
         return response()->json(['message' => 'Nouveau code envoyé.']);
     }
