@@ -18,6 +18,13 @@ Schedule::job(new PurgeExpiredTenders())
     ->name('purge-expired-tenders')
     ->withoutOverlapping();
 
+// E-mail GROUPÉ quotidien des nouvelles opportunités (une seule notification
+// par utilisateur, par pays, sans lien vers le marché). Envoyé chaque matin.
+Schedule::command('alerts:send-daily-digest')
+    ->dailyAt('08:00')
+    ->name('send-daily-digest')
+    ->withoutOverlapping();
+
 // Suppression automatique quotidienne des abonnements annulés (statut « cancelled »).
 // Ils ne servent plus à rien une fois annulés : on les retire définitivement de la base.
 Schedule::call(function () {

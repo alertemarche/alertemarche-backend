@@ -6,37 +6,214 @@ use App\Models\Alert;
 use App\Models\ArtisanNeed;
 use App\Models\Tender;
 use App\Models\User;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Diffusion d'une alerte à un abonné en respectant :
- *  - l'obligation d'un abonnement actif (plus d'alertes gratuites) ;
- *  - la règle « 1 opportunité matchée = 1 alerte consommée » (WA + Email = 1) ;
- *  - WhatsApp réservé aux abonnés payants actifs.
+ *  - le plafond quotidien de marchés (config alertemarche.daily_alerts) ;
+ *  - la règle « 1 opportunité matchée = 1 alerte consommée » ;
+ *  - l'envoi d'un e-mail GROUPÉ quotidien pour les marchés (sans lien vers
+ *    le marché) : l'utilisateur est invité à se connecter au site pour
+ *    consulter les détails.
  */
 class AlertDispatcher
 {
+    /** Libellés des pays couverts (code ISO → nom FR). */
+    public const COUNTRIES = [
+        'BJ' => 'Bénin',
+        'TG' => 'Togo',
+        'CI' => "Côte d'Ivoire",
+        'SN' => 'Sénégal',
+        'BF' => 'Burkina Faso',
+    ];
+
+    /** Préposition correcte devant le nom du pays (« au Bénin », « en Côte d'Ivoire »). */
+    protected const COUNTRY_PREP = [
+        'BJ' => 'au',
+        'TG' => 'au',
+        'CI' => 'en',
+        'SN' => 'au',
+        'BF' => 'au',
+    ];
+
     public function __construct(
         protected BrevoService $brevo,
         protected WhatsAppService $whatsapp,
     ) {}
 
-    /** Diffuse une alerte de type appel d'offres. */
+    /**
+     * Met un appel d'offres en file d'attente pour l'utilisateur.
+     *
+     * NOUVEAU MODÈLE : on n'envoie plus un e-mail détaillé (avec lien) par
+     * marché. Le marché est enregistré avec le statut « queued » ; un e-mail
+     * GROUPÉ quotidien (sans lien vers le marché) est ensuite envoyé par la
+     * commande « alerts:send-daily-digest ». L'utilisateur se connecte au site
+     * pour consulter les détails.
+     *
+     * Le plafond quotidien (config alertemarche.daily_alerts, défaut 5) reste
+     * appliqué en amont via User::canReceiveAlert() : au plus N marchés mis en
+     * file par utilisateur et par jour.
+     */
     public function dispatchTender(User $user, Tender $tender, float $score = 60.0): ?Alert
     {
         if (! $user->canReceiveAlert()) {
             return null;
         }
 
-        $message = $this->formatTenderMessage($tender);
+        $isFree = ! $user->hasActiveSubscription();
 
-        $waParams = [
-            $user->name ?: 'cher abonné',
-            $tender->title,
-            $tender->institution ?: 'Non communiqué',
-            $tender->deadline?->format('d/m/Y') ?: 'Non communiquée',
-        ];
+        $alert = Alert::create([
+            'user_id' => $user->id,
+            'source_type' => 'tender',
+            'source_id' => $tender->id,
+            'title' => $tender->title,
+            // Le contenu réel est un e-mail groupé quotidien sans détails :
+            // on conserve ici l'objet du marché à titre de référence interne.
+            'message' => $tender->title,
+            'relevance_score' => $score,
+            'is_free' => $isFree,
+            'status' => 'queued',
+        ]);
 
-        return $this->deliver($user, 'tender', $tender->id, $tender->title, $message, $score, $waParams);
+        // Compteur historique (le plafond quotidien est géré par
+        // User::canReceiveAlert(), qui compte les alertes créées aujourd'hui).
+        if ($isFree) {
+            $user->increment('free_alerts_used');
+        }
+
+        return $alert;
+    }
+
+    /**
+     * Envoie l'e-mail GROUPÉ quotidien à tous les utilisateurs ayant des marchés
+     * en attente (status = « queued »).
+     *
+     * Règles :
+     *  - un seul e-mail par utilisateur, listant le nombre de marchés PAR PAYS ;
+     *  - AUCUN mélange de pays entre utilisateurs : le matching ne rattache déjà
+     *    un marché qu'aux utilisateurs de son pays (primary_country) ou d'un
+     *    abonnement couvrant ce pays. On regroupe donc par pays réel du marché ;
+     *  - aucun lien vers le marché : l'e-mail invite seulement à se connecter.
+     *
+     * @return array{users:int, sent:int, tenders:int} statistiques d'envoi
+     */
+    public function sendDailyDigests(): array
+    {
+        $queued = Alert::where('status', 'queued')
+            ->where('source_type', 'tender')
+            ->get()
+            ->groupBy('user_id');
+
+        $stats = ['users' => 0, 'sent' => 0, 'tenders' => 0];
+
+        foreach ($queued as $userId => $alerts) {
+            $stats['users']++;
+            $user = User::find($userId);
+
+            // Utilisateur introuvable ou notifications e-mail désactivées :
+            // on solde les alertes sans envoyer.
+            if (! $user || ! $user->email || ! $user->notify_email) {
+                Alert::whereIn('id', $alerts->pluck('id'))->update([
+                    'status' => 'skipped',
+                    'sent_at' => now(),
+                ]);
+
+                continue;
+            }
+
+            // Comptage par pays (uniquement les marchés encore présents en base).
+            $tenderIds = $alerts->pluck('source_id')->unique()->all();
+            $tenders = Tender::whereIn('id', $tenderIds)->get()->keyBy('id');
+
+            $countsByCountry = [];
+            foreach ($alerts as $a) {
+                $t = $tenders->get($a->source_id);
+                if (! $t) {
+                    continue; // marché purgé entre-temps (deadline expirée)
+                }
+                $countsByCountry[$t->country] = ($countsByCountry[$t->country] ?? 0) + 1;
+            }
+
+            $total = array_sum($countsByCountry);
+
+            // Plus aucun marché valide à annoncer : on solde sans e-mail.
+            if ($total === 0) {
+                Alert::whereIn('id', $alerts->pluck('id'))->update([
+                    'status' => 'skipped',
+                    'sent_at' => now(),
+                ]);
+
+                continue;
+            }
+
+            [$subject, $body] = $this->buildTenderDigest($user, $countsByCountry, $total);
+
+            $ok = false;
+            try {
+                $ok = $this->brevo->sendAlert($user->email, $user->name, $subject, $body);
+            } catch (\Throwable $e) {
+                Log::warning('Digest e-mail echec pour user '.$user->id.' : '.$e->getMessage());
+            }
+
+            Alert::whereIn('id', $alerts->pluck('id'))->update([
+                'status' => $ok ? 'sent' : 'failed',
+                'sent_email' => $ok,
+                'sent_at' => now(),
+            ]);
+
+            if ($ok) {
+                $stats['sent']++;
+                $stats['tenders'] += $total;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Construit l'e-mail groupé (objet + corps HTML) pour un utilisateur.
+     *
+     * @param  array<string,int>  $countsByCountry  code pays → nombre de marchés
+     * @return array{0:string,1:string}  [objet, corps HTML]
+     */
+    public function buildTenderDigest(User $user, array $countsByCountry, int $total): array
+    {
+        $prenom = $user->name ? explode(' ', trim($user->name))[0] : 'Bonjour';
+        $sMarche = $total > 1 ? 'nouveaux marchés' : 'nouveau marché';
+        $sOpp = $total > 1 ? 'opportunités' : 'opportunité';
+
+        $subject = "🔔 {$total} ".($total > 1 ? 'nouvelles opportunités' : 'nouvelle opportunité')
+            .' dans votre domaine — AlerteMarché';
+
+        // Ligne par pays : « • 3 marchés au Bénin »
+        $lignes = '';
+        foreach ($countsByCountry as $code => $n) {
+            $pays = self::COUNTRIES[$code] ?? $code;
+            $prep = self::COUNTRY_PREP[$code] ?? 'au';
+            $motMarche = $n > 1 ? 'marchés' : 'marché';
+            $lignes .= "<li style=\"margin:6px 0;\">✅ <strong>{$n}</strong> {$motMarche} {$prep} {$pays}</li>";
+        }
+
+        $connexionUrl = 'https://www.alertemarche.com/connexion.html';
+
+        $body = "<p style=\"font-size:16px;\">Bonjour <strong>{$prenom}</strong>,</p>"
+            ."<p style=\"font-size:16px;\">Bonne nouvelle ! <strong>{$total} {$sMarche}</strong> "
+            ."correspondant à votre domaine d'activité "
+            .($total > 1 ? "viennent d'être ajoutés" : "vient d'être ajouté")
+            ." sur <strong>AlerteMarché</strong> :</p>"
+            ."<ul style=\"list-style:none;padding-left:0;font-size:16px;\">{$lignes}</ul>"
+            ."<p style=\"font-size:16px;\">Connectez-vous à votre espace pour découvrir "
+            ."ces {$sOpp} et consulter tous les détails (objet, institution, montant, date limite).</p>"
+            ."<p style=\"text-align:center;margin:28px 0;\">"
+            .'<a href="'.$connexionUrl.'" style="display:inline-block;background:#0f766e;color:#fff;'
+            .'padding:14px 30px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">'
+            .'Me connecter</a></p>'
+            ."<p style=\"font-size:15px;color:#4b5563;\">Ne manquez aucune opportunité dans votre secteur.</p>"
+            .'<p style="margin-top:22px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">'
+            ."— L'équipe AlerteMarché · alertemarche.com</p>";
+
+        return [$subject, $body];
     }
 
     /** Diffuse une alerte de type besoin artisan. */
