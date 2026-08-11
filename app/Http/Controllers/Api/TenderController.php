@@ -129,24 +129,30 @@ class TenderController extends Controller
      */
     protected function userHasAccess(): bool
     {
-        // Si l'utilisateur est authentifié (a un compte gratuit) → déverrouillé
-        // Si visiteur anonyme → verrouillé (flouté)
-        // On teste d'abord le guard sanctum, puis on vérifie si un token est présent
-        if (auth('sanctum')->check()) {
-            return true;
-        }
+        // Accès aux données complètes réservé aux comptes GRATUITS *vérifiés*.
+        // - Visiteur anonyme          → verrouillé (flouté)
+        // - Inscrit NON vérifié (OTP) → verrouillé (flouté) tant qu'il n'a pas
+        //   confirmé son e-mail/téléphone via le code OTP
+        // - Inscrit vérifié           → déverrouillé
+        $user = auth('sanctum')->user();
 
-        // Fallback : vérifier manuellement si un bearer token valide est présent
-        if ($token = request()->bearerToken()) {
+        // Fallback : résolution manuelle du bearer token (le guard sanctum ne
+        // s'attache pas toujours sur une route publique sans middleware auth).
+        if (! $user && ($token = request()->bearerToken())) {
             try {
                 $accessToken = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
-                return $accessToken && $accessToken->tokenable;
-            } catch (\Exception $e) {
-                return false;
+                $user = $accessToken ? $accessToken->tokenable : null;
+            } catch (\Throwable $e) {
+                $user = null;
             }
         }
 
-        return false;
+        if (! $user) {
+            return false;
+        }
+
+        // Compte confirmé si l'e-mail OU le téléphone est vérifié.
+        return $user->email_verified_at !== null || $user->phone_verified_at !== null;
     }
 
     /**
