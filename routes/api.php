@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Admin\NewsletterAmController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ArtisanNeedController;
+use App\Http\Controllers\Api\PubInquiryController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\GeoController;
 use App\Http\Controllers\Api\IngestController;
@@ -53,6 +54,9 @@ Route::get('/countries', fn () => response()->json(
 Route::get('/tenders', [TenderController::class, 'index']);
 Route::get('/tenders/{tender}', [TenderController::class, 'show']);
 
+// Espaces publicitaires — demande de réservation (public)
+Route::post('/pub-inquiry', [PubInquiryController::class, 'store']);
+
 // Besoins artisans (public : lecture + expression d'un besoin par un visiteur)
 Route::get('/needs', [ArtisanNeedController::class, 'index']);
 Route::post('/needs/express', [ArtisanNeedController::class, 'store']);
@@ -79,7 +83,7 @@ Route::middleware('scraper')->prefix('ingest')->group(function () {
 });
 
 // Espace abonné (authentifié)
-Route::middleware('auth:sanctum')->group(function () {
+Route::middleware(['auth:sanctum', 'track.device'])->group(function () {
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
@@ -104,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/alerts-stats', [AdminController::class, 'alertsStats']);
         Route::get('/scrapers', [AdminController::class, 'scrapers']);
         Route::get('/activity-calendar', [AdminController::class, 'activityCalendar']);
+        Route::get('/device-stats', [AdminController::class, 'deviceStats']);
         // Utilisateurs
         Route::get('/users', [AdminController::class, 'users']);
         Route::get('/users/{user}', [AdminController::class, 'showUser']);
