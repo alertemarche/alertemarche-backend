@@ -51,15 +51,20 @@ class TenderController extends Controller
         // - Exclut les AO avec deadline passée
         // - Exclut les AO sans deadline créés il y a > 90 jours (cas des sources
         //   inactives comme Plan International qui polluaient le site)
+        // - Exclut les AO avec publication_date > 180 jours (filtre anti-vieux marchés 2023-2024)
         // - Les plans de passation et avis généraux sont toujours gardés (types spécifiques)
         if (!$request->has('active') || $request->boolean('active')) {
             $query->where(function ($q) use ($request) {
                 // Garder si deadline future
                 $q->where('deadline', '>=', now()->startOfDay())
-                  // OU si pas de deadline MAIS créé récemment (< 90 jours)
+                  // OU si pas de deadline MAIS créé récemment (< 90 jours) ET publié récemment (< 180 jours)
                   ->orWhere(function ($sub) {
                       $sub->whereNull('deadline')
-                          ->where('created_at', '>=', now()->subDays(90));
+                          ->where('created_at', '>=', now()->subDays(90))
+                          ->where(function ($pubSub) {
+                              $pubSub->whereNull('publication_date')
+                                     ->orWhere('publication_date', '>=', now()->subDays(180));
+                          });
                   })
                   // OU si c'est un plan de passation / avis général (toujours pertinent)
                   ->orWhereIn('type', ['plan_passation', 'avis_general']);
