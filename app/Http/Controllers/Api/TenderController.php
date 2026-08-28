@@ -33,8 +33,14 @@ class TenderController extends Controller
                       ->orderByDesc('collected_at');
                 break;
             default: // recent
-                $query->orderByRaw('COALESCE(publication_date, collected_at::date) DESC')
-                      ->orderByDesc('collected_at');
+                // On trie par date de collecte réelle (ajout dans notre système)
+                // et NON par publication_date : cette dernière est souvent
+                // corrompue par les sources (dates dans le futur : 2030, 2036…)
+                // ce qui bloquait de vieux avis en tête en permanence. Le tri
+                // par collected_at garantit que les marchés fraîchement ajoutés
+                // apparaissent toujours en premier.
+                $query->orderByDesc('collected_at')
+                      ->orderByDesc('id');
         }
 
         if ($request->filled('country')) {
