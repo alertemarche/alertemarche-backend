@@ -197,21 +197,33 @@ class AlertDispatcher
 
         $connexionUrl = 'https://www.alertemarche.com/connexion.html';
 
-        $body = "<p style=\"font-size:16px;\">Bonjour <strong>{$prenom}</strong>,</p>"
-            ."<p style=\"font-size:16px;\">Bonne nouvelle ! <strong>{$total} {$sMarche}</strong> "
+        // Bloc pays (encadré vert clair) — un ✅ par pays avec compteur.
+        $paysBloc = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+            ."style=\"background:#f0faf6;border:1px solid #d7ede4;border-radius:10px;margin:20px 0;\">"
+            ."<tr><td style=\"padding:16px 22px;\">"
+            ."<ul style=\"list-style:none;margin:0;padding:0;font-size:16px;color:#14352a;\">{$lignes}</ul>"
+            ."</td></tr></table>";
+
+        // Grand bouton CTA vert centré (compatible Gmail/webmail : balise <a> stylée en inline-block).
+        $cta = "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\">"
+            ."<tr><td align=\"center\" style=\"padding:8px 0 4px;\">"
+            .'<a href="'.$connexionUrl.'" target="_blank" '
+            .'style="display:inline-block;background:#1a7f5a;color:#ffffff;padding:16px 40px;'
+            .'border-radius:10px;text-decoration:none;font-weight:800;font-size:17px;'
+            .'box-shadow:0 3px 10px rgba(26,127,90,.28);">🔔 Consulter mes marchés</a>'
+            ."</td></tr></table>";
+
+        $body = "<p style=\"font-size:16px;margin:0 0 14px;\">Bonjour <strong>{$prenom}</strong>,</p>"
+            ."<p style=\"font-size:16px;margin:0 0 6px;\">Bonne nouvelle ! <strong>{$total} {$sMarche}</strong> "
             ."correspondant à votre domaine d'activité "
-            .($total > 1 ? "viennent d'être ajoutés" : "vient d'être ajouté")
+            .($total > 1 ? "viennent d'être publiés" : "vient d'être publié")
             ." sur <strong>AlerteMarché</strong> :</p>"
-            ."<ul style=\"list-style:none;padding-left:0;font-size:16px;\">{$lignes}</ul>"
-            ."<p style=\"font-size:16px;\">Connectez-vous à votre espace pour découvrir "
-            ."ces {$sOpp} et consulter tous les détails (objet, institution, montant, date limite).</p>"
-            ."<p style=\"text-align:center;margin:28px 0;\">"
-            .'<a href="'.$connexionUrl.'" style="display:inline-block;background:#0f766e;color:#fff;'
-            .'padding:14px 30px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;">'
-            .'Me connecter</a></p>'
-            ."<p style=\"font-size:15px;color:#4b5563;\">Ne manquez aucune opportunité dans votre secteur.</p>"
-            .'<p style="margin-top:22px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">'
-            ."— L'équipe AlerteMarché · alertemarche.com</p>";
+            .$paysBloc
+            ."<p style=\"font-size:16px;margin:0 0 22px;\">Connectez-vous à votre espace pour découvrir "
+            ."ces {$sOpp} et consulter tous les détails : <em>objet, institution, montant estimé et date limite</em>.</p>"
+            .$cta
+            ."<p style=\"font-size:14px;color:#4b5563;text-align:center;margin:18px 0 0;\">"
+            ."Ne manquez aucune opportunité dans votre secteur.</p>";
 
         return [$subject, $body];
     }
@@ -292,16 +304,22 @@ class AlertDispatcher
      */
     protected function teaserMessage(User $user): string
     {
-        $url = 'https://alertemarche.com/tarifs.html';
+        $url = 'https://www.alertemarche.com/connexion.html';
         $prenom = $user->name ? explode(' ', trim($user->name))[0] : 'Bonjour';
 
-        return "🔔 <strong>De nouveaux marchés correspondent à votre domaine !</strong><br><br>"
-            ."{$prenom}, des appels d'offres et opportunités viennent d'être publiés dans votre secteur d'activité sur AlerteMarché.<br><br>"
-            ."Pour <strong>consulter les détails</strong> (objet, institution, montant, date limite) et recevoir "
-            ."<strong>toutes vos alertes en temps réel</strong> par e-mail, activez votre abonnement :<br><br>"
-            .'👉 <a href="'.$url.'" style="display:inline-block;background:#1a7f5a;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:700;">Je m\'abonne pour accéder aux marchés</a><br><br>'
-            ."Ne manquez plus aucune opportunité dans votre domaine.<br>"
-            .'<p style="margin-top:20px;padding-top:16px;border-top:1px solid #e3ebe7;color:#6b7d77;font-size:13px;">— AlerteMarche.com</p>';
+        return "<p style=\"font-size:16px;margin:0 0 14px;\">Bonjour <strong>{$prenom}</strong>,</p>"
+            ."<p style=\"font-size:16px;margin:0 0 18px;\">Bonne nouvelle ! De nouveaux appels d'offres et "
+            ."opportunités viennent d'être publiés dans votre secteur d'activité sur <strong>AlerteMarché</strong>.</p>"
+            ."<p style=\"font-size:16px;margin:0 0 22px;\">Connectez-vous à votre espace pour consulter tous "
+            ."les détails : <em>objet, institution, montant estimé et date limite</em>.</p>"
+            .'<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
+            .'<td align="center" style="padding:8px 0 4px;">'
+            .'<a href="'.$url.'" target="_blank" style="display:inline-block;background:#1a7f5a;color:#ffffff;'
+            .'padding:16px 40px;border-radius:10px;text-decoration:none;font-weight:800;font-size:17px;'
+            .'box-shadow:0 3px 10px rgba(26,127,90,.28);">🔔 Consulter mes marchés</a>'
+            .'</td></tr></table>'
+            ."<p style=\"font-size:14px;color:#4b5563;text-align:center;margin:18px 0 0;\">"
+            ."Ne manquez aucune opportunité dans votre secteur.</p>";
     }
 
     protected function sendFreemiumExhausted(User $user): void

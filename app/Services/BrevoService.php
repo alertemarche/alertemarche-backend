@@ -69,7 +69,8 @@ class BrevoService
     /** Email d'alerte (appel d'offres ou besoin artisan). */
     public function sendAlert(string $email, ?string $name, string $subject, string $body): bool
     {
-        $html = view('emails.alert', ['name' => $name, 'subject' => $subject, 'body' => nl2br(e($body))])->render();
+        // $body est déjà du HTML valide (construit par AlertDispatcher) ; ne pas l'échapper.
+        $html = view('emails.alert', ['name' => $name, 'subject' => $subject, 'body' => $body])->render();
 
         return $this->send($email, $name, $subject, $html);
     }
