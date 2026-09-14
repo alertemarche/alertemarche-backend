@@ -207,7 +207,13 @@ class OpenAIService
             }
 
             if ($response->failed()) {
-                Log::error('OpenAI OCR erreur HTTP', ['status' => $response->status(), 'body' => mb_substr($response->body(), 0, 300)]);
+                $status = $response->status();
+                Log::error('OpenAI OCR erreur HTTP', ['status' => $status, 'body' => mb_substr($response->body(), 0, 300)]);
+
+                // Alerte crédits épuisés (erreur 429 ou message "insufficient_quota")
+                if ($status === 429 || str_contains((string) $response->body(), 'insufficient_quota')) {
+                    $this->sendCreditAlert();
+                }
 
                 return null;
             }
@@ -257,7 +263,13 @@ class OpenAIService
                 ]);
 
             if ($response->failed()) {
-                Log::error('OpenAI erreur HTTP', ['status' => $response->status(), 'body' => $response->body()]);
+                $status = $response->status();
+                Log::error('OpenAI erreur HTTP', ['status' => $status, 'body' => $response->body()]);
+
+                // Alerte crédits épuisés (erreur 429 ou message "insufficient_quota")
+                if ($status === 429 || str_contains((string) $response->body(), 'insufficient_quota')) {
+                    $this->sendCreditAlert();
+                }
 
                 return null;
             }
@@ -269,6 +281,44 @@ class OpenAIService
             Log::error('OpenAI exception', ['message' => $e->getMessage()]);
 
             return null;
+        }
+    }
+
+    /**
+     * Envoie une alerte email quand les crédits OpenAI sont épuisés.
+     * Throttling : 1 mail maximum par 24h pour éviter le spam.
+     */
+    protected function sendCreditAlert(): void
+    {
+        $cacheKey = 'openai_credit_alert_sent';
+
+        // Si déjà envoyé dans les 24h, ne pas renvoyer
+        if (Cache::has($cacheKey)) {
+            return;
+        }
+
+        try {
+            $brevo = app(BrevoService::class);
+            $subject = '🚨 AlerteMarché — Crédits OpenAI épuisés';
+            $body = "Bonjour,\n\n"
+                ."Les crédits OpenAI sont épuisés (erreur 429 détectée).\n\n"
+                ."Les nouveaux marchés collectés ne pourront pas être traduits, résumés "
+                ."et classés par secteur tant que le compte n'est pas rechargé.\n\n"
+                ."Pour recharger :\n"
+                ."1. Connectez-vous sur https://platform.openai.com/account/billing\n"
+                ."2. Ajoutez des crédits (généralement 10-20\$ suffisent pour plusieurs mois)\n\n"
+                ."Cette alerte ne sera pas renvoyée avant 24h.\n\n"
+                ."— Système AlerteMarché";
+
+            $sent = $brevo->sendAlert('info@alertemarche.com', $subject, $body);
+
+            if ($sent) {
+                // Marquer comme envoyé pour 24h
+                Cache::put($cacheKey, true, now()->addDay());
+                Log::info('Alerte crédits OpenAI envoyée à info@alertemarche.com');
+            }
+        } catch (\Throwable $e) {
+            Log::error('Échec envoi alerte crédits OpenAI', ['error' => $e->getMessage()]);
         }
     }
 }
