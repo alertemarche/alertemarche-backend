@@ -41,11 +41,30 @@ class IngestController extends Controller
         $new = 0;
         $updated = 0;
         foreach ($data['items'] as $item) {
-            // Clé de déduplication : identifiant source si disponible (permet la
-            // détection de modifications/addendum), sinon hash objet+institution+deadline.
-            $hash = !empty($item['external_id'])
-                ? hash('sha256', $item['country'].'|'.$item['external_id'])
-                : hash('sha256', mb_strtolower(trim($item['title'])).'|'.mb_strtolower(trim($item['institution'])).'|'.($item['deadline'] ?? ''));
+            // Clé de déduplication basée sur le CONTENU (pays + objet + acheteur
+            // + date limite). On NE se base PLUS sur l'external_id seul : certaines
+            // sources (notamment les Plans de Passation DNCMP du Bénin) régénèrent
+            // un external_id différent pour le MÊME marché à chaque publication,
+            // ce qui créait des milliers de doublons. En dédoublonnant sur le
+            // contenu, un marché identique republié met à jour la ligne existante
+            // au lieu d'en créer une nouvelle.
+            // La date limite est normalisée au format Y-m-d pour que deux
+            // publications du même marché (avec des heures/fuseaux différents)
+            // produisent le même hash.
+            $deadlineKey = '';
+            if (!empty($item['deadline'])) {
+                try {
+                    $deadlineKey = \Illuminate\Support\Carbon::parse($item['deadline'])->format('Y-m-d');
+                } catch (\Throwable $e) {
+                    $deadlineKey = (string) $item['deadline'];
+                }
+            }
+            $hash = hash('sha256',
+                $item['country'].'|'.
+                mb_strtolower(trim($item['title'])).'|'.
+                mb_strtolower(trim($item['institution'])).'|'.
+                $deadlineKey
+            );
 
             $attributes = [
                 'title' => $item['title'],
