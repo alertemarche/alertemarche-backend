@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Jobs\ProcessArtisanNeedJob;
 use App\Models\Alert;
 use App\Models\ArtisanNeed;
+use App\Models\DeviceActivity;
 use App\Models\ScraperLog;
 use App\Models\Subscription;
 use App\Models\Tender;
@@ -20,25 +21,55 @@ use Illuminate\Support\Str;
  */
 class AdminController extends Controller
 {
-    /** Tableau de bord global. */
-    public function stats(): JsonResponse
+    /** Tableau de bord global (ou filtré par pays si country est fourni). */
+    public function stats(Request $request): JsonResponse
     {
-        $usersByProfile = User::selectRaw('profile_type, count(*) as total')
+        $country = $request->filled('country') ? $request->string('country')->toString() : null;
+
+        // Requête de base pour les utilisateurs (avec filtre pays optionnel)
+        $usersQuery = User::query();
+        if ($country) {
+            $usersQuery->where('primary_country', $country);
+        }
+
+        $usersByProfile = (clone $usersQuery)->selectRaw('profile_type, count(*) as total')
             ->groupBy('profile_type')->pluck('total', 'profile_type');
 
         $usersByCountry = User::selectRaw('primary_country, count(*) as total')
             ->groupBy('primary_country')->pluck('total', 'primary_country');
 
+        // IDs des utilisateurs pour filtrer abonnements et alertes
+        $userIds = $country ? (clone $usersQuery)->pluck('id') : null;
+
+        // Abonnements actifs (filtrés par pays si nécessaire)
+        $subsQuery = Subscription::where('status', 'active');
+        if ($userIds) {
+            $subsQuery->whereIn('user_id', $userIds);
+        }
+
+        // Alertes envoyées (filtrées par pays si nécessaire)
+        $alertsQuery = Alert::where('status', 'sent');
+        if ($userIds) {
+            $alertsQuery->whereIn('user_id', $userIds);
+        }
+
+        // Marchés (filtrés par pays si nécessaire)
+        $tendersQuery = Tender::query();
+        if ($country) {
+            $tendersQuery->where('country', $country);
+        }
+
         return response()->json([
-            'users_total' => User::count(),
+            'users_total' => (clone $usersQuery)->count(),
             'users_by_profile' => $usersByProfile,
             'users_by_country' => $usersByCountry,
-            'active_subscriptions' => Subscription::where('status', 'active')->count(),
-            'revenue_active' => (int) Subscription::where('status', 'active')->sum('amount'),
-            'tenders_total' => Tender::count(),
-            'tenders_today' => Tender::whereDate('collected_at', today())->count(),
+            'active_subscriptions' => (clone $subsQuery)->count(),
+            'revenue_active' => (int) (clone $subsQuery)->sum('amount'),
+            'tenders_total' => (clone $tendersQuery)->count(),
+            'tenders_today' => (clone $tendersQuery)->whereDate('collected_at', today())->count(),
             'needs_pending' => ArtisanNeed::where('status', 'pending')->count(),
-            'alerts_sent' => Alert::where('status', 'sent')->count(),
+            'alerts_sent' => (clone $alertsQuery)->count(),
+            'filtered_country' => $country,
         ]);
     }
 
@@ -244,6 +275,12 @@ class AdminController extends Controller
         }
         if ($request->filled('country')) {
             $query->where('primary_country', $request->string('country'));
+        }
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->string('date_from'));
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->string('date_to'));
         }
         if ($request->filled('q')) {
             $term = '%'.$request->string('q').'%';
@@ -718,6 +755,64 @@ class AdminController extends Controller
             'total'        => $page->total(),
             'total_real'   => $totalReal,
             'total_all'    => (int) Subscription::sum('amount'),
+        ]);
+    }
+
+    /**
+     * Statistiques « Appareils connectés » pour le back-office.
+     * Fournit trois fenêtres temporelles (maintenant / aujourd'hui /
+     * 7 derniers jours) avec la répartition ordinateur / téléphone /
+     * tablette, plus la liste détaillée des appareils récents.
+     */
+    public function deviceStats(Request $request): JsonResponse
+    {
+        // Ventilation par type d'appareil sur une contrainte de date donnée.
+        $breakdown = function (\Closure $constrain): array {
+            $rows = DeviceActivity::query()
+                ->tap($constrain)
+                ->selectRaw('device_type, count(*) as total')
+                ->groupBy('device_type')
+                ->pluck('total', 'device_type');
+
+            $desktop = (int) ($rows['desktop'] ?? 0);
+            $mobile  = (int) ($rows['mobile'] ?? 0);
+            $tablet  = (int) ($rows['tablet'] ?? 0);
+
+            return [
+                'desktop' => $desktop,
+                'mobile'  => $mobile,
+                'tablet'  => $tablet,
+                'total'   => $desktop + $mobile + $tablet,
+            ];
+        };
+
+        $now     = $breakdown(fn ($q) => $q->where('last_seen_at', '>=', now()->subMinutes(5)));
+        $today   = $breakdown(fn ($q) => $q->where('last_seen_at', '>=', today()));
+        $week    = $breakdown(fn ($q) => $q->where('last_seen_at', '>=', now()->subDays(7)));
+
+        // Liste détaillée : appareils les plus récents (30 derniers jours).
+        $list = DeviceActivity::query()
+            ->with('user:id,name,organization')
+            ->where('last_seen_at', '>=', now()->subDays(30))
+            ->orderByDesc('last_seen_at')
+            ->limit(200)
+            ->get()
+            ->map(fn (DeviceActivity $d) => [
+                'id'           => $d->id,
+                'organization' => $d->user?->organization ?: ($d->user?->name ?: 'Inconnu'),
+                'name'         => $d->user?->name,
+                'device_type'  => $d->device_type,
+                'browser'      => $d->browser,
+                'platform'     => $d->platform,
+                'last_seen_at' => $d->last_seen_at,
+            ])
+            ->values();
+
+        return response()->json([
+            'now'   => $now,
+            'today' => $today,
+            'week'  => $week,
+            'list'  => $list,
         ]);
     }
 }
