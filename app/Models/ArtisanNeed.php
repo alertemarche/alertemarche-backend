@@ -11,13 +11,16 @@ class ArtisanNeed extends Model
         'publisher_id', 'trade', 'employer_name', 'people_needed', 'description',
         'locality', 'region', 'country', 'estimated_budget', 'duration',
         'start_date', 'contact', 'status', 'validated_by', 'validated_at',
-        'ai_summary', 'ai_processed',
+        'ai_summary', 'ai_processed', 'is_premium', 'paid_at', 'expires_at',
     ];
 
     protected $casts = [
         'start_date' => 'date',
         'validated_at' => 'datetime',
+        'paid_at' => 'datetime',
+        'expires_at' => 'datetime',
         'ai_processed' => 'boolean',
+        'is_premium' => 'boolean',
     ];
 
     public function publisher(): BelongsTo
