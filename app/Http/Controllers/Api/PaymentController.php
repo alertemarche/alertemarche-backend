@@ -214,4 +214,64 @@ class PaymentController extends Controller
 
         $subscription->user->update(['notify_whatsapp' => true, 'is_suspended' => false]);
     }
+
+    /** Récupérer une annonce par son token de paiement (public, pas d'auth requise). */
+    public function getNeedByToken(Request $request): JsonResponse
+    {
+        $token = $request->string('token');
+        if (!$token) {
+            return response()->json(['message' => 'Token manquant'], 400);
+        }
+
+        $need = \App\Models\ArtisanNeed::where('payment_token', $token)->first();
+        if (!$need) {
+            return response()->json(['message' => 'Annonce non trouvée ou lien expiré'], 404);
+        }
+
+        return response()->json($need);
+    }
+
+    /** Activer PREMIUM après paiement via le token (public, pas d'auth requise). */
+    public function activatePremiumByToken(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'payment_token' => ['required', 'string'],
+            'transaction_id' => ['required', 'string', 'max:120'],
+        ]);
+
+        $need = \App\Models\ArtisanNeed::where('payment_token', $data['payment_token'])->first();
+        if (!$need) {
+            return response()->json(['message' => 'Annonce non trouvée ou lien expiré'], 404);
+        }
+
+        if (!$need->wants_premium) {
+            return response()->json(['message' => 'Cette annonce n\'a pas demandé PREMIUM'], 422);
+        }
+
+        if ($need->is_premium) {
+            return response()->json(['message' => 'Cette annonce est déjà PREMIUM'], 422);
+        }
+
+        // Vérifier le paiement KKiaPay
+        $result = $this->kkiapay->verifyTransaction($data['transaction_id']);
+        if (!$result['success']) {
+            return response()->json([
+                'message' => 'Le paiement n\'a pas pu être confirmé',
+                'status' => $result['status'],
+            ], 422);
+        }
+
+        // Activer PREMIUM
+        $need->update([
+            'is_premium' => true,
+            'paid_at' => now(),
+            'expires_at' => now()->addDays(30),
+            'payment_token' => null, // Invalider le token après usage
+        ]);
+
+        return response()->json([
+            'message' => 'Paiement confirmé ! Votre annonce est maintenant PREMIUM pour 30 jours.',
+            'need' => $need->fresh(),
+        ]);
+    }
 }

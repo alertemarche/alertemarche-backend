@@ -24,6 +24,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
             'geolocate' => \App\Http\Middleware\GeolocateUser::class,
             'scraper' => \App\Http\Middleware\EnsureScraperToken::class,
+            'track.device' => \App\Http\Middleware\TrackDeviceActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -79,6 +79,8 @@ Route::post('/admin/login', [AdminController::class, 'adminLogin']);
 // Paiement — KKiaPay
 Route::get('/payments/kkiapay/config', [PaymentController::class, 'config']);   // clé publique widget
 Route::post('/payments/kkiapay/webhook', [PaymentController::class, 'webhook']); // serveur-à-serveur (public)
+Route::get('/payments/need-by-token', [PaymentController::class, 'getNeedByToken']); // récupérer annonce par token
+Route::post('/payments/activate-premium-by-token', [PaymentController::class, 'activatePremiumByToken']); // activer premium après paiement
 
 // Ingestion scrapers (jeton dédié)
 Route::middleware('scraper')->prefix('ingest')->group(function () {
@@ -106,6 +108,9 @@ Route::middleware(['auth:sanctum', 'track.device'])->group(function () {
     Route::post('/needs', [ArtisanNeedController::class, 'store']);
     Route::get('/needs/{need}/responses', [ArtisanNeedController::class, 'responses']);
     Route::post('/needs/{need}/verify-premium', [ArtisanNeedController::class, 'verifyPremium']);
+    
+    // [ADMIN] Demande de paiement PREMIUM après validation
+    Route::post('/needs/{need}/request-premium-payment', [ArtisanNeedController::class, 'requestPremiumPayment'])->middleware('admin');
 
     // Back-office
     Route::middleware('admin')->prefix('admin')->group(function () {

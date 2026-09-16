@@ -49,55 +49,30 @@ class ArtisanNeedController extends Controller
             'duration' => ['nullable', 'string', 'max:255'],
             'start_date' => ['nullable', 'date'],
             'contact' => ['required', 'string', 'max:255'],
-            'is_premium' => ['nullable', 'boolean'],
-            'payment_ref' => ['nullable', 'string', 'max:255'],
+            'wants_premium' => ['nullable', 'boolean'],
         ]);
 
-        $wantsPremium = (bool) ($data['is_premium'] ?? false);
-        $paymentRef = $data['payment_ref'] ?? null;
+        $wantsPremium = (bool) ($data['wants_premium'] ?? false);
 
-        // Valeurs par défaut : annonce GRATUITE (15 jours de visibilité).
-        $isPremium = false;
-        $paidAt = null;
-        $expiresAt = now()->addDays(15);
-        $warning = null;
+        unset($data['wants_premium']);
 
-        // Tentative d'activation PREMIUM : vérification serveur du paiement KKiaPay.
-        if ($wantsPremium && $paymentRef) {
-            $result = $kkiapay->verifyTransaction($paymentRef);
-            if ($result['success']) {
-                $isPremium = true;
-                $paidAt = now();
-                $expiresAt = now()->addDays(30);
-            } else {
-                // Paiement non confirmé : on crée quand même l'annonce en GRATUIT.
-                $warning = "Le paiement PREMIUM n'a pas pu être confirmé. Votre annonce a été enregistrée en formule gratuite (15 jours). Contactez-nous si vous avez été débité.";
-            }
-        } elseif ($wantsPremium && ! $paymentRef) {
-            $warning = "Aucune preuve de paiement fournie. Votre annonce a été enregistrée en formule gratuite (15 jours).";
-        }
-
-        unset($data['is_premium'], $data['payment_ref']);
-
+        // Nouvelle logique : l'utilisateur soumet GRATUITEMENT même s'il veut PREMIUM
+        // Le paiement sera demandé APRÈS validation manuelle par l'admin
         $need = ArtisanNeed::create([
             ...$data,
             'publisher_id' => $request->user()?->id,
             'status' => 'pending', // en attente de validation éditoriale
-            'is_premium' => $isPremium,
-            'paid_at' => $paidAt,
-            'expires_at' => $expiresAt,
+            'wants_premium' => $wantsPremium,
+            'is_premium' => false, // pas encore premium tant que non payé
+            'paid_at' => null,
+            'expires_at' => null, // sera défini après validation + paiement
         ]);
 
-        $message = $isPremium
-            ? 'Annonce PREMIUM publiée. Elle sera diffusée en priorité après validation par notre équipe.'
-            : 'Besoin publié. Il sera diffusé après validation par notre équipe.';
+        $message = $wantsPremium
+            ? 'Annonce soumise avec demande PREMIUM ! Notre équipe la validera sous 24-48h, puis vous recevrez un lien pour régler 50 000 FCFA et activer la formule PREMIUM (30 jours, mise en avant).'
+            : 'Annonce gratuite soumise ! Elle sera validée et diffusée sous 24-48h (visible 15 jours).';
 
-        $payload = ['message' => $message, 'need' => $need];
-        if ($warning) {
-            $payload['warning'] = $warning;
-        }
-
-        return response()->json($payload, 201);
+        return response()->json(['message' => $message, 'need' => $need], 201);
     }
 
     /** Vérification a posteriori du paiement PREMIUM (widget KKiaPay). */
@@ -139,5 +114,75 @@ class ArtisanNeedController extends Controller
             ->where('source_id', $need->id)->count();
 
         return response()->json(['need_id' => $need->id, 'artisans_alerted' => $count]);
+    }
+
+    /** [ADMIN] Envoyer l'email de demande de paiement PREMIUM après validation. */
+    public function requestPremiumPayment(Request $request, ArtisanNeed $need): JsonResponse
+    {
+        // Vérifier que l'utilisateur est admin
+        abort_unless($request->user()?->role === 'admin', 403, 'Action réservée aux administrateurs.');
+
+        // Vérifier que l'annonce veut premium et n'est pas déjà premium
+        abort_unless($need->wants_premium && !$need->is_premium, 422, 'Cette annonce ne demande pas PREMIUM ou est déjà PREMIUM.');
+
+        // Générer un token de paiement unique
+        $paymentToken = \Illuminate\Support\Str::random(32);
+        $need->update(['payment_token' => $paymentToken]);
+
+        // Envoyer l'email via BrevoService
+        $publisher = $need->publisher;
+        if (!$publisher || !$publisher->email) {
+            return response()->json(['message' => 'Éditeur introuvable ou sans email.'], 422);
+        }
+
+        $paymentUrl = "https://www.alertemarche.com/paiement-annonce.html?token={$paymentToken}";
+        
+        $emailBody = "
+            <h2 style='color:#d97706;'>✅ Votre annonce est validée !</h2>
+            <p>Bonjour <strong>{$publisher->name}</strong>,</p>
+            <p>Bonne nouvelle ! Votre annonce <strong>« {$need->trade} »</strong> a été validée par notre équipe.</p>
+            
+            <div style='background:#fffbeb;border:2px solid #f59e0b;border-radius:10px;padding:20px;margin:20px 0;'>
+                <h3 style='margin:0 0 10px;color:#92400e;'>⭐ Activation PREMIUM</h3>
+                <p style='margin:0;'>Vous avez demandé la formule <strong>PREMIUM</strong> pour bénéficier de :</p>
+                <ul style='margin:10px 0;padding-left:20px;'>
+                    <li>✨ <strong>Badge PREMIUM doré</strong> en haut de page</li>
+                    <li>📅 <strong>30 jours de visibilité</strong> (au lieu de 15)</li>
+                    <li>🔥 <strong>Insertion dans le fil des marchés publics/privés</strong></li>
+                    <li>📈 <strong>Jusqu'à 3× plus de vues</strong></li>
+                </ul>
+                <p style='margin:10px 0 0;'><strong>Tarif :</strong> 50 000 FCFA (paiement unique, sécurisé via Mobile Money)</p>
+            </div>
+
+            <div style='text-align:center;margin:30px 0;'>
+                <a href='{$paymentUrl}' style='display:inline-block;background:#f59e0b;color:#fff;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:1.1rem;'>
+                    💳 Payer 50 000 FCFA et activer PREMIUM
+                </a>
+            </div>
+
+            <p style='font-size:0.9rem;color:#6b7280;'>
+                ⏱️ Ce lien est valable 7 jours. Après paiement, votre annonce sera immédiatement mise en avant.<br>
+                ❌ Si vous ne souhaitez plus la formule PREMIUM, votre annonce sera publiée gratuitement (15 jours) automatiquement.
+            </p>
+            
+            <p>Cordialement,<br><strong>L'équipe AlerteMarché</strong></p>
+        ";
+
+        try {
+            $brevo = app(\App\Services\BrevoService::class);
+            $brevo->sendAlert(
+                $publisher->email,
+                $publisher->name,
+                '✅ Votre annonce est validée — Paiement PREMIUM disponible',
+                $emailBody
+            );
+
+            return response()->json([
+                'message' => 'Email de demande de paiement envoyé avec succès.',
+                'payment_url' => $paymentUrl,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Erreur lors de l\'envoi de l\'email : ' . $e->getMessage()], 500);
+        }
     }
 }
