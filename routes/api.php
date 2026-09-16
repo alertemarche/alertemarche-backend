@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\PricingController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TenderController;
+use App\Http\Controllers\Api\StatsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -20,6 +21,9 @@ use Illuminate\Support\Facades\Route;
 | API AlerteMarché
 |--------------------------------------------------------------------------
 */
+
+// Statistiques publiques
+Route::get('/stats/public', [StatsController::class, 'public']);
 
 // Santé
 Route::get('/health', fn () => response()->json([
@@ -101,6 +105,7 @@ Route::middleware(['auth:sanctum', 'track.device'])->group(function () {
     // Publication de besoins (entreprises, admin, ONG)
     Route::post('/needs', [ArtisanNeedController::class, 'store']);
     Route::get('/needs/{need}/responses', [ArtisanNeedController::class, 'responses']);
+    Route::post('/needs/{need}/verify-premium', [ArtisanNeedController::class, 'verifyPremium']);
 
     // Back-office
     Route::middleware('admin')->prefix('admin')->group(function () {

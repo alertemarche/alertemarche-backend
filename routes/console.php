@@ -30,3 +30,10 @@ Schedule::command('alerts:send-daily-digest')
 Schedule::call(function () {
     Subscription::where('status', 'cancelled')->delete();
 })->daily()->name('purge-cancelled-subscriptions')->withoutOverlapping();
+
+// Expiration des annonces gratuites (15j) et premium (30j)
+Schedule::call(function () {
+    \App\Models\ArtisanNeed::where('expires_at', '<', now())
+        ->whereIn('status', ['approved', 'pending'])
+        ->update(['status' => 'expired']);
+})->daily()->name('expire-annonces')->withoutOverlapping();
