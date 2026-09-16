@@ -7,6 +7,7 @@ use App\Models\ArtisanNeed;
 use App\Services\KkiapayService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class ArtisanNeedController extends Controller
@@ -50,11 +51,29 @@ class ArtisanNeedController extends Controller
             'start_date' => ['nullable', 'date'],
             'contact' => ['required', 'string', 'max:255'],
             'wants_premium' => ['nullable', 'boolean'],
+            // Images : optionnelles, PREMIUM uniquement, JPG/PNG/WEBP ≤ 2 Mo
+            'image1' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+            'image2' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
         ]);
 
         $wantsPremium = (bool) ($data['wants_premium'] ?? false);
 
-        unset($data['wants_premium']);
+        // Retirer les champs non-scalaires avant le create()
+        unset($data['wants_premium'], $data['image1'], $data['image2']);
+
+        // Stocker les images (seulement si PREMIUM demandé)
+        $image1Url = null;
+        $image2Url = null;
+        if ($wantsPremium) {
+            if ($request->hasFile('image1') && $request->file('image1')->isValid()) {
+                $path = $request->file('image1')->store('needs', 'public');
+                $image1Url = Storage::url($path);
+            }
+            if ($request->hasFile('image2') && $request->file('image2')->isValid()) {
+                $path = $request->file('image2')->store('needs', 'public');
+                $image2Url = Storage::url($path);
+            }
+        }
 
         // Nouvelle logique : l'utilisateur soumet GRATUITEMENT même s'il veut PREMIUM
         // Le paiement sera demandé APRÈS validation manuelle par l'admin
@@ -66,6 +85,8 @@ class ArtisanNeedController extends Controller
             'is_premium' => false, // pas encore premium tant que non payé
             'paid_at' => null,
             'expires_at' => null, // sera défini après validation + paiement
+            'image1' => $image1Url,
+            'image2' => $image2Url,
         ]);
 
         $message = $wantsPremium

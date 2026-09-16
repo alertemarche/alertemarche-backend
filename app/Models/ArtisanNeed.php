@@ -12,6 +12,7 @@ class ArtisanNeed extends Model
         'locality', 'region', 'country', 'estimated_budget', 'duration',
         'start_date', 'contact', 'status', 'validated_by', 'validated_at',
         'ai_summary', 'ai_processed', 'is_premium', 'wants_premium', 'payment_token', 'paid_at', 'expires_at',
+        'image1', 'image2',
     ];
 
     protected $casts = [
