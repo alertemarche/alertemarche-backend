@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\NewsletterAmController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ArtisanNeedController;
 use App\Http\Controllers\Api\PubInquiryController;
+use App\Http\Controllers\Api\JsErrorController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\GeoController;
 use App\Http\Controllers\Api\IngestController;
@@ -60,6 +61,9 @@ Route::get('/tenders/{tender}', [TenderController::class, 'show']);
 
 // Espaces publicitaires — demande de réservation (public)
 Route::post('/pub-inquiry', [PubInquiryController::class, 'store']);
+
+// Logging des erreurs JavaScript frontend (monitoring)
+Route::post('/log-js-error', [JsErrorController::class, 'log']);
 
 // Besoins artisans (public : lecture + expression d'un besoin par un visiteur)
 Route::get('/needs', [ArtisanNeedController::class, 'index']);
