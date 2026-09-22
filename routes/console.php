@@ -37,3 +37,9 @@ Schedule::call(function () {
         ->whereIn('status', ['approved', 'pending'])
         ->update(['status' => 'expired']);
 })->daily()->name('expire-annonces')->withoutOverlapping();
+
+// Monitoring automatique du système (détecte les blocages et envoie une alerte email)
+Schedule::command('system:check-health')
+    ->everyFifteenMinutes()
+    ->name('check-system-health')
+    ->withoutOverlapping();

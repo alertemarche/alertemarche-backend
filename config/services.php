@@ -18,6 +18,7 @@ return [
         'key' => env('BREVO_API_KEY'),
         'sender_email' => env('BREVO_SENDER_EMAIL', 'info@alertemarche.com'),
         'sender_name' => env('BREVO_SENDER_NAME', 'AlerteMarché'),
+        'alert_email' => env('BREVO_ALERT_EMAIL', 'famillesmoutairou@gmail.com'),
         'base_url' => 'https://api.brevo.com/v3',
     ],
 
