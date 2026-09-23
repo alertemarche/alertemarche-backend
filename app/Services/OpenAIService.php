@@ -300,22 +300,27 @@ class OpenAIService
         try {
             $brevo = app(BrevoService::class);
             $subject = '🚨 AlerteMarché — Crédits OpenAI épuisés';
-            $body = "Bonjour,\n\n"
-                ."Les crédits OpenAI sont épuisés (erreur 429 détectée).\n\n"
-                ."Les nouveaux marchés collectés ne pourront pas être traduits, résumés "
-                ."et classés par secteur tant que le compte n'est pas rechargé.\n\n"
-                ."Pour recharger :\n"
-                ."1. Connectez-vous sur https://platform.openai.com/account/billing\n"
-                ."2. Ajoutez des crédits (généralement 10-20\$ suffisent pour plusieurs mois)\n\n"
-                ."Cette alerte ne sera pas renvoyée avant 24h.\n\n"
-                ."— Système AlerteMarché";
+            $body = "<h2 style='color:#dc2626;'>⚠️ Crédits OpenAI épuisés</h2>"
+                ."<p>Les crédits OpenAI sont épuisés (erreur 429 détectée sur l'API).</p>"
+                ."<p><strong>Impact immédiat :</strong> Les nouveaux marchés collectés ne peuvent plus être traduits, "
+                ."résumés et classés par secteur. Ils restent en attente dans la base de données.</p>"
+                ."<h3>Action requise :</h3>"
+                ."<ol>"
+                ."<li>Connectez-vous sur <a href='https://platform.openai.com/account/billing' style='color:#1a7f5a;'>https://platform.openai.com/account/billing</a></li>"
+                ."<li>Ajoutez des crédits (généralement 10-20\$ suffisent pour plusieurs mois)</li>"
+                ."<li>Les marchés en attente seront automatiquement traités lors du prochain passage du worker</li>"
+                ."</ol>"
+                ."<p style='color:#666;font-size:14px;margin-top:20px;'>Cette alerte ne sera pas renvoyée avant 24h pour éviter le spam.</p>"
+                ."<p style='color:#666;font-size:14px;'>— Système de monitoring AlerteMarché</p>";
 
-            $sent = $brevo->sendAlert('info@alertemarche.com', $subject, $body);
+            // Envoi à l'administrateur (paramètre name ajouté pour correspondre à la signature)
+            $adminEmail = (string) config('alertemarche.admin_email', 'info@alertemarche.com');
+            $sent = $brevo->sendAlert($adminEmail, 'Administrateur AlerteMarché', $subject, $body);
 
             if ($sent) {
                 // Marquer comme envoyé pour 24h
                 Cache::put($cacheKey, true, now()->addDay());
-                Log::info('Alerte crédits OpenAI envoyée à info@alertemarche.com');
+                Log::info('Alerte crédits OpenAI envoyée', ['recipient' => $adminEmail]);
             }
         } catch (\Throwable $e) {
             Log::error('Échec envoi alerte crédits OpenAI', ['error' => $e->getMessage()]);

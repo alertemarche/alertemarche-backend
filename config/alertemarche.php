@@ -4,6 +4,9 @@ return [
     // Pays couverts
     'countries' => ['BJ', 'TG', 'CI', 'SN', 'BF'],
 
+    // E-mail administrateur pour les alertes système critiques (crédits OpenAI, etc.)
+    'admin_email' => env('ADMIN_EMAIL', 'info@alertemarche.com'),
+
     // Tarifs de base (FCFA / mois / pays) — tarif normal
     'prices' => [
         'artisan' => (int) env('PRICE_ARTISAN', 10000),
