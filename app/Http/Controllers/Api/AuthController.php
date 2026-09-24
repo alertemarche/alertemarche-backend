@@ -198,9 +198,27 @@ class AuthController extends Controller
             return response()->json(['message' => 'Identifiants incorrects.'], 401);
         }
 
+        // Si l'email n'est pas encore vérifié, on renvoie un nouveau code OTP
+        // et on signale au frontend de rediriger vers /verification.
+        if ($user->email && ! $user->email_verified_at) {
+            try {
+                $this->issueOtp($user);
+            } catch (\Throwable $e) {
+                Log::error('Échec envoi OTP connexion (email non vérifié)', ['user' => $user->id, 'error' => $e->getMessage()]);
+            }
+            $token = $user->createToken('api')->plainTextToken;
+            return response()->json([
+                'user'           => $user,
+                'token'          => $token,
+                'email_verified' => false,
+                'otp_required'   => true,
+                'message'        => 'Votre adresse e-mail n\'est pas encore vérifiée. Un nouveau code vous a été envoyé.',
+            ]);
+        }
+
         $token = $user->createToken('api')->plainTextToken;
 
-        return response()->json(['user' => $user, 'token' => $token]);
+        return response()->json(['user' => $user, 'token' => $token, 'email_verified' => true]);
     }
 
     public function me(Request $request): JsonResponse
