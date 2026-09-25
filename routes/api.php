@@ -140,6 +140,13 @@ Route::middleware(['auth:sanctum', 'track.device'])->group(function () {
         Route::get('/needs/pending', [AdminController::class, 'pendingNeeds']);
         Route::post('/needs/{need}/validate', [AdminController::class, 'validateNeed']);
 
+        // Marchés manuels (saisie assistée par IA depuis une photo)
+        Route::post('/tenders/extract-image', [AdminController::class, 'extractFromImage']);
+        Route::get('/tenders', [AdminController::class, 'listManualTenders']);
+        Route::post('/tenders', [AdminController::class, 'createManualTender']);
+        Route::patch('/tenders/{id}', [AdminController::class, 'updateManualTender']);
+        Route::delete('/tenders/{id}', [AdminController::class, 'deleteManualTender']);
+
         // Secteurs (référentiel + nombre d'abonnés par secteur)
         Route::get('/sectors', [NewsletterAmController::class, 'sectors']);
         Route::post('/sectors/assign', [NewsletterAmController::class, 'assignSector']);

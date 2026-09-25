@@ -241,6 +241,94 @@ class OpenAIService
         });
     }
 
+    /**
+     * Extraction VISION d'un avis de marché à partir d'une PHOTO (back-office).
+     *
+     * L'admin photographie un Avis de Demande de Renseignements et de Prix
+     * (ADRP) affiché sur un panneau officiel (mairie/préfecture). GPT-4o Vision
+     * lit l'image et renvoie un JSON structuré pré-remplissant le formulaire de
+     * publication manuelle. L'admin vérifie/corrige puis publie en un clic.
+     *
+     * @param  string  $dataUri  Image encodée « data:image/jpeg;base64,... »
+     * @return array|null  Champs extraits (voir prompt), ou null si échec.
+     */
+    public function extractTenderFromImage(string $dataUri): ?array
+    {
+        if (empty($this->key)) {
+            Log::warning('OpenAI Vision (photo marché) : clé API absente.');
+
+            return null;
+        }
+        if (! preg_match('#^data:image/[a-zA-Z0-9.+-]+;base64,#', $dataUri)) {
+            Log::warning('OpenAI Vision (photo marché) : data URI image invalide.');
+
+            return null;
+        }
+
+        $prompt = "Tu es un expert en marchés publics d'Afrique de l'Ouest (Bénin, Togo, Côte d'Ivoire, Sénégal, Burkina Faso). "
+            ."Analyse cette image d'un Avis de marché public (souvent un Avis de Demande de Renseignements et de Prix — ADRP) affiché sur un panneau officiel.\n\n"
+            ."Extrais les informations suivantes et réponds UNIQUEMENT avec un JSON valide (aucun texte avant ou après) :\n"
+            ."{\n"
+            ."  \"title\": \"objet complet du marché\",\n"
+            ."  \"institution\": \"nom de l'autorité contractante\",\n"
+            ."  \"reference\": \"référence SIGMAP (ex: T_EMAA_124187) ou null\",\n"
+            ."  \"avis_number\": \"numéro de l'avis (ex: 101/MDN/PRMP/SP-PRMP/SA) ou null\",\n"
+            ."  \"market_type\": \"travaux|fournitures|services|drp\",\n"
+            ."  \"procedure_type\": \"drp|cotation|aoo|aor|gre_a_gre\",\n"
+            ."  \"publication_date\": \"AAAA-MM-JJ ou null si non visible\",\n"
+            ."  \"deadline\": \"AAAA-MM-JJ ou null si non visible\",\n"
+            ."  \"estimated_amount\": montant_en_nombre_ou_null,\n"
+            ."  \"location\": \"lieu d'exécution ou null\",\n"
+            ."  \"country\": \"bj\",\n"
+            ."  \"type\": \"public\",\n"
+            ."  \"source_name\": \"ADRP Manuel\",\n"
+            ."  \"description\": \"description courte de ce qui est demandé\"\n"
+            ."}\n\n"
+            ."Règles :\n"
+            ."- Si un champ n'est pas lisible ou absent, mets null. Ne devine JAMAIS.\n"
+            ."- Le type de marché se déduit de la référence SIGMAP : T_ = travaux, F_ = fournitures, S_ = services.\n"
+            ."- market_type = \"drp\" indique une DRP (petite commande < 20M FCFA).\n"
+            ."- estimated_amount doit être un NOMBRE entier (sans espaces ni devise), ou null.\n"
+            ."- country : code pays à 2 lettres en minuscules (bj, tg, ci, sn, bf). Bénin = bj par défaut.";
+
+        try {
+            $response = Http::withToken($this->key)
+                ->timeout(120)
+                ->post($this->baseUrl.'/chat/completions', [
+                    'model' => config('services.openai.ocr_model', $this->model),
+                    'messages' => [
+                        ['role' => 'system', 'content' => 'Tu réponds uniquement en JSON valide, en français.'],
+                        ['role' => 'user', 'content' => [
+                            ['type' => 'text', 'text' => $prompt],
+                            ['type' => 'image_url', 'image_url' => ['url' => $dataUri]],
+                        ]],
+                    ],
+                    'response_format' => ['type' => 'json_object'],
+                    'max_tokens' => 1000,
+                    'temperature' => 0.1,
+                ]);
+        } catch (\Throwable $e) {
+            Log::error('OpenAI Vision (photo marché) exception', ['message' => $e->getMessage()]);
+
+            return null;
+        }
+
+        if ($response->failed()) {
+            $status = $response->status();
+            Log::error('OpenAI Vision (photo marché) erreur HTTP', ['status' => $status, 'body' => mb_substr($response->body(), 0, 300)]);
+            if ($status === 429 || str_contains((string) $response->body(), 'insufficient_quota')) {
+                $this->sendCreditAlert();
+            }
+
+            return null;
+        }
+
+        $content = $response->json('choices.0.message.content');
+        $data = $content ? json_decode($content, true) : null;
+
+        return is_array($data) ? $data : null;
+    }
+
     protected function askJson(string $prompt): ?array
     {
         if (empty($this->key)) {

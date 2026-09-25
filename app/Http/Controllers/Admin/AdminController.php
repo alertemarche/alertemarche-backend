@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\ProcessArtisanNeedJob;
+use App\Jobs\ProcessTenderJob;
 use App\Models\Alert;
 use App\Models\ArtisanNeed;
 use App\Models\DeviceActivity;
@@ -11,6 +12,7 @@ use App\Models\ScraperLog;
 use App\Models\Subscription;
 use App\Models\Tender;
 use App\Models\User;
+use App\Services\OpenAIService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -814,5 +816,230 @@ class AdminController extends Controller
             'week'  => $week,
             'list'  => $list,
         ]);
+    }
+
+    // =========================================================================
+    // MARCHÉS MANUELS — saisie assistée par IA (GPT-4o Vision) depuis une photo
+    // =========================================================================
+
+    /**
+     * Extraction IA des données d'un marché à partir d'une PHOTO d'avis.
+     * POST /api/admin/tenders/extract-image  (multipart/form-data, champ `image`)
+     *
+     * L'image est convertie en base64 puis analysée par GPT-4o Vision. Le JSON
+     * extrait pré-remplit le formulaire de publication côté back-office.
+     */
+    public function extractFromImage(Request $request, OpenAIService $ai): JsonResponse
+    {
+        $request->validate([
+            'image' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:12288'], // 12 Mo max
+        ]);
+
+        $file = $request->file('image');
+        $mime = $file->getMimeType() ?: 'image/jpeg';
+        $base64 = base64_encode(file_get_contents($file->getRealPath()));
+        $dataUri = 'data:'.$mime.';base64,'.$base64;
+
+        $data = $ai->extractTenderFromImage($dataUri);
+
+        if (! is_array($data)) {
+            return response()->json([
+                'message' => "L'analyse IA a échoué (image illisible ou service indisponible). "
+                    ."Vous pouvez saisir le marché manuellement.",
+                'data' => null,
+            ], 422);
+        }
+
+        // Normalisation défensive du pays (l'IA renvoie parfois « bj » minuscule).
+        if (! empty($data['country'])) {
+            $cc = strtoupper(trim((string) $data['country']));
+            $data['country'] = in_array($cc, ['BJ', 'TG', 'CI', 'SN', 'BF'], true) ? $cc : 'BJ';
+        } else {
+            $data['country'] = 'BJ';
+        }
+
+        return response()->json([
+            'message' => 'Analyse terminée. Vérifiez les données avant publication.',
+            'data' => $data,
+        ]);
+    }
+
+    /**
+     * Liste des marchés saisis manuellement (back-office).
+     * GET /api/admin/tenders
+     */
+    public function listManualTenders(Request $request): JsonResponse
+    {
+        $query = Tender::where('is_manual', true)->latest();
+
+        if ($request->filled('country')) {
+            $query->where('country', strtoupper($request->string('country')->toString()));
+        }
+        if ($request->filled('q')) {
+            $q = $request->string('q')->toString();
+            $query->where(function ($sub) use ($q) {
+                $sub->where('title', 'like', "%{$q}%")
+                    ->orWhere('institution', 'like', "%{$q}%")
+                    ->orWhere('reference', 'like', "%{$q}%");
+            });
+        }
+
+        return response()->json($query->paginate(50));
+    }
+
+    /**
+     * Création d'un marché manuel (publication immédiate).
+     * POST /api/admin/tenders
+     *
+     * Le marché est inséré comme les avis collectés : il apparaît sur le site
+     * public et déclenche l'IA (résumé + secteurs) puis le matching + les
+     * alertes email des abonnés concernés (via ProcessTenderJob).
+     */
+    public function createManualTender(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'title'            => ['required', 'string', 'max:1000'],
+            'institution'      => ['required', 'string', 'max:500'],
+            'reference'        => ['nullable', 'string', 'max:255'],
+            'avis_number'      => ['nullable', 'string', 'max:255'],
+            'location'         => ['nullable', 'string', 'max:500'],
+            'estimated_amount' => ['nullable'],
+            'deadline'         => ['nullable', 'date'],
+            'publication_date' => ['nullable', 'date'],
+            'country'          => ['required', 'string', 'in:BJ,TG,CI,SN,BF'],
+            'type'             => ['nullable', 'string', 'in:public,prive,aac,avis_general,plan_passation'],
+            'market_type'      => ['nullable', 'string', 'max:100'],
+            'procedure_type'   => ['nullable', 'string', 'max:100'],
+            'source_name'      => ['nullable', 'string', 'max:255'],
+            'source_url'       => ['nullable', 'string', 'max:1000'],
+            'description'      => ['nullable', 'string'],
+            'image_url'        => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        // Montant : accepte nombre ou chaîne, stocké en chaîne (comme les scrapers).
+        $amount = $data['estimated_amount'] ?? null;
+        if ($amount !== null && $amount !== '') {
+            $amount = trim((string) $amount);
+        } else {
+            $amount = null;
+        }
+
+        // Clé de déduplication CONTENU (identique à l'ingestion des scrapers).
+        $deadlineKey = '';
+        if (! empty($data['deadline'])) {
+            try {
+                $deadlineKey = \Illuminate\Support\Carbon::parse($data['deadline'])->format('Y-m-d');
+            } catch (\Throwable $e) {
+                $deadlineKey = (string) $data['deadline'];
+            }
+        }
+        $hash = hash('sha256',
+            $data['country'].'|'.
+            mb_strtolower(trim($data['title'])).'|'.
+            mb_strtolower(trim($data['institution'])).'|'.
+            $deadlineKey
+        );
+
+        // Le n° d'avis complète la description (pas de colonne dédiée en base).
+        $description = $data['description'] ?? null;
+        if (! empty($data['avis_number'])) {
+            $description = trim('Avis n° '.$data['avis_number']."\n".(string) $description);
+        }
+
+        $attributes = [
+            'title'            => $data['title'],
+            'teaser_title'     => Tender::teaserTitle($data['title']),
+            'institution'      => $data['institution'],
+            'reference'        => $data['reference'] ?? null,
+            'location'         => $data['location'] ?? null,
+            'estimated_amount' => $amount,
+            'deadline'         => $data['deadline'] ?? null,
+            'publication_date' => $data['publication_date'] ?? null,
+            'country'          => $data['country'],
+            'type'             => $data['type'] ?? 'public',
+            'market_type'      => $data['market_type'] ?? null,
+            'procedure_type'   => $data['procedure_type'] ?? null,
+            'source_name'      => $data['source_name'] ?? 'Saisie manuelle (admin)',
+            'source_url'       => $data['source_url'] ?? 'https://alertemarche.com',
+            'ai_summary'       => $description,
+            'is_manual'        => true,
+            'image_url'        => $data['image_url'] ?? null,
+        ];
+
+        $existing = Tender::where('dedup_hash', $hash)->first();
+        if ($existing) {
+            return response()->json([
+                'message' => 'Un marché identique existe déjà (même objet, autorité et date limite).',
+                'tender' => $existing,
+            ], 409);
+        }
+
+        $tender = Tender::create(array_merge($attributes, [
+            'dedup_hash'   => $hash,
+            'collected_at' => now(),
+        ]));
+
+        // IA (résumé + secteurs) puis matching + alertes email des abonnés.
+        ProcessTenderJob::dispatch($tender->id)->onQueue('ai');
+
+        return response()->json([
+            'message' => 'Marché publié avec succès. Les abonnés concernés seront alertés.',
+            'tender' => $tender,
+        ], 201);
+    }
+
+    /**
+     * Modification d'un marché manuel.
+     * PATCH /api/admin/tenders/{id}
+     */
+    public function updateManualTender(Request $request, $id): JsonResponse
+    {
+        $tender = Tender::where('is_manual', true)->findOrFail($id);
+
+        $data = $request->validate([
+            'title'            => ['sometimes', 'string', 'max:1000'],
+            'institution'      => ['sometimes', 'string', 'max:500'],
+            'reference'        => ['nullable', 'string', 'max:255'],
+            'location'         => ['nullable', 'string', 'max:500'],
+            'estimated_amount' => ['nullable'],
+            'deadline'         => ['nullable', 'date'],
+            'publication_date' => ['nullable', 'date'],
+            'country'          => ['sometimes', 'string', 'in:BJ,TG,CI,SN,BF'],
+            'type'             => ['nullable', 'string', 'in:public,prive,aac,avis_general,plan_passation'],
+            'market_type'      => ['nullable', 'string', 'max:100'],
+            'procedure_type'   => ['nullable', 'string', 'max:100'],
+            'description'      => ['nullable', 'string'],
+        ]);
+
+        if (array_key_exists('estimated_amount', $data)) {
+            $data['estimated_amount'] = ($data['estimated_amount'] === null || $data['estimated_amount'] === '')
+                ? null : trim((string) $data['estimated_amount']);
+        }
+        if (array_key_exists('description', $data)) {
+            $data['ai_summary'] = $data['description'];
+            unset($data['description']);
+        }
+        if (isset($data['title'])) {
+            $data['teaser_title'] = Tender::teaserTitle($data['title']);
+        }
+
+        $tender->fill($data)->save();
+
+        return response()->json([
+            'message' => 'Marché mis à jour.',
+            'tender' => $tender,
+        ]);
+    }
+
+    /**
+     * Suppression d'un marché manuel.
+     * DELETE /api/admin/tenders/{id}
+     */
+    public function deleteManualTender($id): JsonResponse
+    {
+        $tender = Tender::where('is_manual', true)->findOrFail($id);
+        $tender->delete();
+
+        return response()->json(['message' => 'Marché supprimé.']);
     }
 }
