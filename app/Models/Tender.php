@@ -10,7 +10,7 @@ class Tender extends Model
         'title', 'title_fr', 'teaser_title', 'institution', 'reference', 'location', 'estimated_amount',
         'deadline', 'publication_date', 'nb_lots', 'country', 'type', 'market_type', 'procedure_type',
         'source_name', 'source_url', 'dao_url', 'sectors', 'ai_summary', 'ai_processed',
-        'ocr_processed', 'dedup_hash', 'external_id', 'collected_at',
+        'ocr_processed', 'dedup_hash', 'external_id', 'collected_at', 'last_seen_at',
         'is_manual', 'image_url',
     ];
 
@@ -22,6 +22,7 @@ class Tender extends Model
         'deadline' => 'date',
         'publication_date' => 'date',
         'collected_at' => 'datetime',
+        'last_seen_at' => 'datetime',
     ];
 
     /**

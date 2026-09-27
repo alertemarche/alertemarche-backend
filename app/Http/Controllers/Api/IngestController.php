@@ -94,6 +94,7 @@ class IngestController extends Controller
                 $tender = Tender::create(array_merge($attributes, [
                     'dedup_hash' => $hash,
                     'collected_at' => now(),
+                    'last_seen_at' => now(),
                 ]));
                 $new++;
                 ProcessTenderJob::dispatch($tender->id)->onQueue('ai');
@@ -101,7 +102,8 @@ class IngestController extends Controller
                 // Détection de modification (addendum, changement de date limite…).
                 $changed = $tender->deadline?->format('Y-m-d') !== ($item['deadline'] ?? null)
                     || $tender->title !== $item['title'];
-                $tender->fill($attributes)->save();
+                // Rafraîchissement de last_seen_at à chaque re-collecte du marché
+                $tender->fill(array_merge($attributes, ['last_seen_at' => now()]))->save();
                 if ($changed) {
                     $updated++;
                 }
