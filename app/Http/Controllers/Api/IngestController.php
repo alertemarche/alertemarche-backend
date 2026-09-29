@@ -102,8 +102,32 @@ class IngestController extends Controller
                 // Détection de modification (addendum, changement de date limite…).
                 $changed = $tender->deadline?->format('Y-m-d') !== ($item['deadline'] ?? null)
                     || $tender->title !== $item['title'];
+                
+                // Protection des liens officiels : si le tender existant provient d'un
+                // portail national officiel, on GARDE son source_url et on n'écrase pas
+                // avec celui d'une source institutionnelle secondaire (SIMAU, SBEE, etc.).
+                // Cela garantit que les utilisateurs atterrissent toujours sur la page
+                // officielle gouvernementale quand elle existe.
+                $officialSources = [
+                    'Portail des Marchés Publics du Bénin (DNCMP)',
+                    'Marchés Publics Côte d\'Ivoire — Portail national',
+                    'DNCCP — Direction Nationale du Contrôle de la Commande Publique (Togo)',
+                    'DGCMEF Quotidien — Direction Générale du Contrôle des Marchés Publics et Engagements Financiers',
+                ];
+                
+                $preserveSourceUrl = in_array($tender->source_name, $officialSources, true);
+                
+                if ($preserveSourceUrl) {
+                    // On met à jour TOUT sauf source_url et source_name (on garde l'officiel).
+                    $attributesToUpdate = $attributes;
+                    unset($attributesToUpdate['source_url'], $attributesToUpdate['source_name']);
+                    $tender->fill(array_merge($attributesToUpdate, ['last_seen_at' => now()]))->save();
+                } else {
+                    // Source non-officielle ou secondaire : mise à jour normale (tout écrasé).
+                    $tender->fill(array_merge($attributes, ['last_seen_at' => now()]))->save();
+                }
+                
                 // Rafraîchissement de last_seen_at à chaque re-collecte du marché
-                $tender->fill(array_merge($attributes, ['last_seen_at' => now()]))->save();
                 if ($changed) {
                     $updated++;
                 }
