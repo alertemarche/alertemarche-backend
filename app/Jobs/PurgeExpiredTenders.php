@@ -77,11 +77,38 @@ class PurgeExpiredTenders implements ShouldQueue
             })
             ->delete();
 
+        // --- Règle 3 : plans de passation & avis généraux SANS date limite,
+        //     d'une ANNÉE RÉVOLUE. ---
+        // Un plan de passation est une prévision annuelle : un plan 2026 n'a plus
+        // aucune valeur en 2027 (l'État publie alors ses nouveaux plans). On les
+        // conserve donc TOUTE leur année de référence, puis on les supprime dès
+        // le passage à l'année suivante.
+        //
+        // IMPORTANT : on ne vise ici que les plans/avis SANS date limite. Ceux
+        // qui possèdent une date limite (ex. avis généraux avec échéance
+        // 31/12/2026) sont déjà supprimés automatiquement par la Règle 1 le
+        // lendemain de leur échéance — les inclure ici les supprimerait à tort
+        // (certains sont publiés fin décembre pour l'année suivante).
+        //
+        // L'année de référence est déduite de la date de publication, avec repli
+        // sur collected_at puis created_at.
+        $currentYear = (int) now()->year;
+
+        $deletedOldPlans = Tender::whereIn('type', self::KEEP_TYPES)
+            ->whereNull('deadline')
+            ->whereRaw(
+                'EXTRACT(YEAR FROM COALESCE(publication_date, collected_at, created_at)) < ?',
+                [$currentYear]
+            )
+            ->delete();
+
         Log::info('PurgeExpiredTenders: purge terminée', [
             'deleted_with_deadline' => $deletedWithDeadline,
             'deleted_no_deadline'   => $deletedNoDeadline,
+            'deleted_old_plans'     => $deletedOldPlans,
             'deadline_threshold'    => $deadlineThreshold->toDateTimeString(),
             'stale_threshold'       => $staleThreshold->toDateTimeString(),
+            'current_year'          => $currentYear,
         ]);
     }
 }
